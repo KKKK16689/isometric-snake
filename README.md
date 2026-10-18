@@ -1,5 +1,8 @@
 # 等距贪吃蛇 (Isometric Snake)
 
+[![build](https://github.com/KKKK16689/isometric-snake/actions/workflows/build.yml/badge.svg)](https://github.com/KKKK16689/isometric-snake/actions/workflows/build.yml)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 等距（2.5D）视角的贪吃蛇游戏。**单 HTML 文件、零依赖、纯 Canvas 渲染**，手机和电脑浏览器都能直接玩。
 
 | 霓虹夜 | 赛博 | 熔岩（双人） |
