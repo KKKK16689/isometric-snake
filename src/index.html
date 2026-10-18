@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#060a14">
+<meta name="description" content="等距视角的 3D 贪吃蛇：单文件、零依赖、纯 Canvas 渲染。支持双人对战、三档 AI、冲刺能量系统和夜间霓虹主题，手机电脑都能玩。">
+<meta property="og:title" content="等距贪吃蛇">
+<meta property="og:description" content="等距视角的 3D 贪吃蛇：双人对战、三档 AI、冲刺能量系统，单 HTML 文件即玩。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="screenshot.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
+<title>等距贪吃蛇</title>
+<link rel="stylesheet" href="css/base.css">
+</head>
+<body>
+<main>
+<h1>等距贪吃蛇</h1>
+<div class="mode">
+<button data-m="easy" class="on">简单</button>
+<button data-m="normal">普通</button>
+<button data-m="pk">双人对战</button>
+<button data-m="ai">人机对战</button>
+<button id="aiLv">AI 普通</button>
+<button id="fs">全屏</button>
+<button id="snd">音效 开</button>
+<button id="mus">音乐 关</button>
+<select id="spr" aria-label="冲刺音效">
+<option value="b">冲刺 喷气</option>
+<option value="c">冲刺 蓄能</option>
+<option value="f">冲刺 街机</option>
+<option value="g">冲刺 脉冲</option>
+<option value="h">冲刺 引擎</option>
+<option value="i">冲刺 电弧</option>
+</select>
+</div>
+<div class="th"></div>
+<div class="hud"><span id="hl"></span><span id="hr"></span></div>
+<div class="stage">
+<div class="pad" data-p="0">
+<button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↑</button><span></span>
+<button data-s="left" aria-label="左">←</button><button data-s="down" aria-label="下">↓</button><button data-s="right" aria-label="右">→</button>
+</div>
+<canvas id="c" role="img" aria-label="等距视角的贪吃蛇棋盘"></canvas>
+<div class="eb" data-p="0"><i></i></div>
+<div class="eb" data-p="1"><i></i></div>
+<div class="cmp" data-p="0"><b class="fd"><u></u></b><i class="hd"></i></div>
+<div class="cmp" data-p="1"><b class="fd"><u></u></b><i class="hd"></i></div>
+<div class="pad" data-p="1">
+<button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↑</button><span></span>
+<button data-s="left" aria-label="左">←</button><button data-s="down" aria-label="下">↓</button><button data-s="right" aria-label="右">→</button>
+</div>
+<div class="sw" data-p="0"></div>
+<div class="sw" data-p="1"></div>
+</div>
+<div class="rotate">请把手机横过来，开始对战</div>
+<div class="hint" id="hint">像 App 一样全屏打开：<br>iPhone：Safari 点分享，再点“添加到主屏幕”<br>安卓：浏览器菜单里选“添加到主屏幕”或“安装应用”<br><span>点这里关闭</span></div>
+<p class="tip">方向键对应屏幕方向，空格暂停。按住 Shift、E 或 Enter 冲刺，手机按住「冲」键冲刺，也可在棋盘上滑动转向。罗盘里箭头是蛇的朝向，橙点指向最近的食物。简单模式有 3 条命。</p>
+</main>
+<script src="js/core.js"></script>
+<script src="js/themes.js"></script>
+<script src="js/patterns.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/particles.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/input.js"></script>
+<script>
+(function () {
+  'use strict';
+  Snake.theme.init();
+  Snake.Ai.init();
+  Snake.Audio.init();
+  Snake.UI.init();
+  Snake.Render.boot();
+  Snake.api.reset();
+  if (new URLSearchParams(location.search).get('autostart') === '1') Snake.api.start(); // ?autostart=1：自动开赛（截图/演示用）
+})();
+</script>
+</body>
+</html>

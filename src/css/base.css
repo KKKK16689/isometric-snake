@@ -1,0 +1,82 @@
+/* 默认主题（霓虹夜）变量兜底：JS 未运行时首屏即默认主题；切换由 themes.js 覆盖同名变量 */
+:root{--bg:#060a14;--fg:#e6ecff;--muted:#7f8fb5;--f1:#0a1122;--f2:#0c142a;--edge:#1b2a55;--btn:#0d1530;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+main{max-width:480px;margin:0 auto;padding:16px}
+h1{font-size:20px;font-weight:600;margin:0 0 8px}
+.mode{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:0 0 10px}
+.mode button{font-size:14px;padding:6px 16px;border-radius:999px;border:1px solid var(--edge);background:var(--btn);color:var(--fg)}
+.mode button.on{background:var(--fg);color:var(--bg)}
+.mode select{font-size:14px;padding:6px 10px;border-radius:999px;border:1px solid var(--edge);background:var(--btn);color:var(--fg)}
+#aiLv{display:none}
+body.ai #aiLv{display:inline-block}
+.hud{display:flex;justify-content:space-between;color:var(--muted);font-size:14px;margin-bottom:4px}
+.hud b{color:var(--fg);font-size:18px}
+.hud .c0{color:#1D9E75;font-weight:600}.hud .c1{color:#378ADD;font-weight:600}.hud .lives{color:#E24B4A}
+.stage{display:flex;flex-direction:column;align-items:center}
+canvas{display:block;width:100%;touch-action:none}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:240px;max-width:100%;margin:12px auto;order:2}
+.pad[data-p="1"]{display:none}
+.pad button{font-size:26px;padding:14px 0;border-radius:12px;border:1px solid var(--edge);background:var(--btn);color:var(--fg);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.pad button:active{transform:scale(.96)}
+.tip{color:var(--muted);font-size:13px;text-align:center;margin:0}
+.rotate{display:none;text-align:center;color:var(--muted);padding:32px 0}
+.th{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:0 0 8px}
+.th .dot{width:22px;height:22px}
+.sw{display:none}
+.dot{width:26px;height:26px;border-radius:50%;border:2px solid transparent;padding:0;touch-action:manipulation}
+.dot.on{border-color:var(--fg)}
+.dot:disabled{opacity:.25}
+.eb{height:8px;width:100%;background:var(--edge);border-radius:4px;overflow:hidden;order:1;margin:8px 0 0}
+.eb i{display:block;height:100%;width:100%;background:#3B82F6;border-radius:4px}
+.eb.on i{background:#60A5FA}
+.eb.lock i{background:#94A3B8}
+.eb[data-p="1"]{display:none}
+.pad .sp{color:#3B82F6;border-color:#3B82F6;-webkit-touch-callout:none}
+.pad .sp.on{background:#3B82F6;color:#fff}
+.stage{position:relative}
+.cmp{position:absolute;top:6px;width:52px;aspect-ratio:1;border-radius:50%;border:1px solid var(--edge);background:var(--btn);opacity:.9;z-index:2;pointer-events:none}
+.cmp[data-p="0"]{left:6px}
+.cmp[data-p="1"]{display:none;right:6px}
+.cmp::before,.cmp::after{content:'';position:absolute;left:50%;top:50%;background:var(--edge);transform:translate(-50%,-50%)}
+.cmp::before{width:1px;height:70%}
+.cmp::after{width:70%;height:1px}
+.cmp .hd,.cmp .fd{position:absolute;inset:0}
+.cmp .hd::after{content:'';position:absolute;right:14%;top:50%;margin-top:-5px;border-left:11px solid var(--hc,#1D9E75);border-top:5px solid transparent;border-bottom:5px solid transparent}
+.cmp .fd u{position:absolute;right:-4px;top:50%;width:8px;height:8px;margin-top:-4px;border-radius:50%;background:#ff7a45}
+.hint{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(300px,86vw);background:var(--btn);color:var(--fg);border:1px solid var(--edge);border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.6;z-index:10}
+.hint.show{display:block}
+.hint span{color:var(--muted);font-size:13px}
+body.im main{position:relative;max-width:none;padding:0;height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;justify-content:center}
+body.im{touch-action:none;overflow:hidden} /* 沉浸布局锁死视口滚动：消滚动条与按键/触控板晃动 */
+body.im main{touch-action:none}
+body.im h1,body.im .tip{display:none}
+body.im .stage{display:contents}
+body.im canvas{max-width:100%;max-height:100%;align-self:center} /* 宽高由 fitCanvas 内联像素值给定，保比例防拉伸 */
+body.im .hud{position:absolute;top:6px;left:10px;right:10px;margin:0;pointer-events:none;z-index:1}
+body.im .mode{position:absolute;top:4px;left:50%;transform:translateX(-50%);margin:0;z-index:2;flex-wrap:wrap;justify-content:center;row-gap:4px;max-width:calc(100vw - 16px);white-space:nowrap}
+body.im .mode button{font-size:12px;padding:3px 10px}
+body.im .mode select{font-size:12px;padding:3px 8px}
+body.im .pad{position:absolute;bottom:8px;width:132px;margin:0;gap:6px;z-index:2}
+body.im .pad[data-p="0"]{left:10px}
+body.im .pad[data-p="1"]{display:grid;right:10px}
+body.im .pad button{font-size:20px;padding:10px 0;opacity:.85}
+body.im .sw{display:grid;grid-template-columns:repeat(3,24px);gap:4px;position:absolute;top:84px;z-index:2}
+body.im .dot{width:24px;height:24px}
+body.im .cmp{top:30px;width:44px}
+body.im .cmp[data-p="0"]{left:10px}
+body.im .cmp[data-p="1"]{display:block;right:10px}
+body.im .eb{position:absolute;top:48px;width:76px;margin:0;z-index:2}
+body.im .eb[data-p="0"]{left:62px}
+body.im .eb[data-p="1"]{display:block;right:62px}
+body.ai .pad[data-p="1"],body.ai .cmp[data-p="1"]{display:none}
+body.im .sw[data-p="0"]{left:10px}
+body.im .sw[data-p="1"]{right:10px}
+body.im .th{position:absolute;top:36px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:nowrap;gap:6px;margin:0;z-index:2} /* 沉浸下主题点悬浮（双人顶中避让 P2 罗盘/能量条） */
+body.im:not(.pk) .th{left:auto;right:10px;transform:none} /* 单人右上 */
+body.im .th .dot{width:20px;height:20px}
+body.im:not(.pk) .pad[data-p="0"]{left:auto;right:10px} /* 单人沉浸：pad 右下 */
+body.im:not(.pk) .eb[data-p="0"]{left:auto;right:10px;top:64px} /* 单人沉浸：能量条右上让位主题点 */
+body.im:not(.pk) .sw[data-p="1"],body.im:not(.pk) .cmp[data-p="1"],body.im:not(.pk) .eb[data-p="1"],body.im:not(.pk) .pad[data-p="1"]{display:none} /* 单人沉浸隐藏 P2 专属 UI */
+@media (orientation:portrait){body.pk:not(.im){overflow:auto}body.pk:not(.im) main{height:auto;display:block;padding:16px}body.pk:not(.im) .hud,body.pk:not(.im) .mode{position:static;transform:none;margin:0 0 8px}body.pk:not(.im) .mode button{font-size:14px;padding:6px 16px}body.pk:not(.im) .stage{display:none}body.pk:not(.im) .rotate{display:block}}

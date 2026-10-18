@@ -1,0 +1,117 @@
+﻿/* input.js —— 输入归一化为方向指令 + HUD/状态条等 DOM 更新。
+   键盘/触屏按钮/滑动/暂停 → api；不直接改渲染与音频。 */
+window.Snake = window.Snake || {};
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const S = Snake.S, K = Snake.K, bus = Snake.bus, api = Snake.api;
+
+  const K1 = { KeyW: 'up', KeyA: 'left', KeyS: 'down', KeyD: 'right' };
+  const K2 = { ArrowUp: 'up', ArrowLeft: 'left', ArrowDown: 'down', ArrowRight: 'right' };
+  const SPKEYS = { ShiftLeft: 0, KeyE: 0, ShiftRight: 1, Enter: 1, Slash: 1 }; // Shift 易串键，给足替代键
+
+  /* ---------- HUD ---------- */
+  function updateHud() {
+    if (K.MODES[S.mode].players === 1) {
+      const p = S.pl[0];
+      $('hl').innerHTML = '得分 <b>' + p.score + '</b> <span class="lives">' + '♥'.repeat(p.lives) + '</span>';
+      $('hr').innerHTML = '最高 <b>' + S.best + '</b>';
+    } else {
+      $('hl').innerHTML = '<span style="color:' + K.SK[S.skin[0]].body[1] + ';font-weight:600">' + K.nm(0) + '</span> 胜 <b>' + S.wins[0] + '</b> · 长 ' + S.pl[0].body.length;
+      $('hr').innerHTML = '长 ' + S.pl[1].body.length + ' · 胜 <b>' + S.wins[1] + '</b> <span style="color:' + K.SK[S.skin[1]].body[1] + ';font-weight:600">' + K.nm(1) + '</span>';
+    }
+  }
+  const ebs = document.querySelectorAll('.eb'), sps = document.querySelectorAll('.pad .sp'),
+        hds = document.querySelectorAll('.cmp .hd'), fds = document.querySelectorAll('.cmp .fd'), cmps = document.querySelectorAll('.cmp');
+  function updateBars() {
+    S.pl.forEach((p, i) => {
+      if (!ebs[i]) return;
+      ebs[i].firstElementChild.style.width = Math.round(p.energy) + '%';
+      ebs[i].classList.toggle('lock', p.locked); ebs[i].classList.toggle('on', p.sprint);
+      sps[i].classList.toggle('on', p.sprint);
+      // 罗盘：箭头 = 朝向，橙点 = 最近食物（均按屏上视角）
+      const d = p.dir, h = p.body[0];
+      hds[i].style.transform = 'rotate(' + (Math.atan2((d[0] + d[1]) * K.HH, (d[0] - d[1]) * K.HW) * 57.3).toFixed(0) + 'deg)';
+      let f = null, bd = 1e9;
+      S.foods.forEach(o => { const m = Math.abs(o.x - h.x) + Math.abs(o.y - h.y); if (m < bd) { bd = m; f = o; } });
+      if (f) { const ex = f.x - h.x, ey = f.y - h.y; fds[i].style.transform = 'rotate(' + (Math.atan2((ex + ey) * K.HH, (ex - ey) * K.HW) * 57.3).toFixed(0) + 'deg)'; }
+      cmps[i].style.setProperty('--hc', K.SK[S.skin[i]].body[1]);
+    });
+  }
+
+  /* ---------- 皮肤选择 ---------- */
+  function drawSwatches() {
+    document.querySelectorAll('.sw').forEach(box => {
+      const p = +box.dataset.p; box.innerHTML = '';
+      K.SK.forEach((s, k) => {
+        const b = document.createElement('button');
+        b.className = 'dot' + (S.skin[p] === k ? ' on' : ''); b.style.background = s.body[1];
+        b.disabled = S.skin[1 - p] === k; b.setAttribute('aria-label', 'P' + (p + 1) + ' 颜色 ' + s.name);
+        b.addEventListener('click', () => { b.blur(); api.setSkin(p, k); drawSwatches(); });
+        box.appendChild(b);
+      });
+    });
+  }
+
+  /* ---------- 全屏 / 主屏提示 ---------- */
+  const hint = $('hint'), showHint = () => hint.classList.add('show');
+  const fullscreen = e => {
+    e.currentTarget.blur();
+    if (document.fullscreenElement) { document.exitFullscreen(); return; }
+    const el = document.documentElement, rq = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!rq) return showHint();
+    try { const r = rq.call(el); if (r && r.catch) r.catch(showHint); } catch (err) { showHint(); }
+  };
+
+  function init() {
+    hint.addEventListener('click', () => hint.classList.remove('show'));
+    if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) $('fs').style.display = 'none';
+    $('fs').addEventListener('click', fullscreen);
+
+    addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.code === 'KeyP') { e.preventDefault(); api.togglePause(); return; }
+      const sp = SPKEYS[e.code];
+      if (sp !== undefined) { e.preventDefault(); if (S.state !== 'playing') api.start(); api.setHold(S.mode === 'pk' ? sp : 0, true); return; }
+      const k1 = K1[e.code], k2 = K2[e.code];
+      if (k1 || k2) { e.preventDefault(); api.press(k1 ? 0 : (S.mode === 'pk' ? 1 : 0), k1 || k2); }
+    });
+    addEventListener('keyup', e => { const s = SPKEYS[e.code]; if (s !== undefined) api.setHold(S.mode === 'pk' ? s : 0, false); });
+    addEventListener('blur', () => S.pl.forEach(p => p.hold = false));
+
+    document.querySelectorAll('.pad button[data-s]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); api.press(+b.parentElement.dataset.p, b.dataset.s); }));
+    document.querySelectorAll('.pad .sp').forEach(b => { // 按住冲刺
+      const i = +b.parentElement.dataset.p;
+      b.addEventListener('pointerdown', e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (err) {} if (S.state !== 'playing') api.start(); api.setHold(i, true); });
+      ['pointerup', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => api.setHold(i, false)));
+      b.addEventListener('contextmenu', e => e.preventDefault());
+    });
+    const wideMQ = window.matchMedia ? matchMedia('(orientation: landscape), (min-width: 760px)') : { matches: false, addEventListener() {} };
+    function syncModeUi() { // body 类与按钮高亮跟随 S.mode + 视口（点击与 URL ?mode= 两个入口共用）
+      document.body.classList.toggle('pk', K.MODES[S.mode].players === 2);
+      document.body.classList.toggle('ai', !!K.MODES[S.mode].ai);
+      document.body.classList.toggle('im', wideMQ.matches); // 横屏/宽屏 → 统一沉浸式
+      document.querySelectorAll('.mode button[data-m]').forEach(x => x.classList.toggle('on', x.dataset.m === S.mode));
+      if (Snake.Render.refit) Snake.Render.refit();
+    }
+    wideMQ.addEventListener('change', syncModeUi);
+    document.querySelectorAll('.mode button[data-m]').forEach(b => b.addEventListener('click', () => {
+      b.blur(); api.setMode(b.dataset.m); syncModeUi();
+    }));
+    syncModeUi(); // ?mode= 进入时同样生效（沉浸布局/滚动锁定不再依赖点击）
+    drawSwatches();
+
+    // 棋盘滑动转向 / 点按暂停
+    let sx0 = 0, sy0 = 0;
+    const cv = $('c');
+    cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; });
+    cv.addEventListener('pointerup', e => {
+      const dx = e.clientX - sx0, dy = e.clientY - sy0;
+      if (Math.hypot(dx, dy) < 20) return api.togglePause();
+      if (S.mode !== 'pk') api.press(0, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+    });
+
+    bus.on('hud', updateHud);
+    (function ui() { updateBars(); requestAnimationFrame(ui); })(); // 状态条/罗盘每帧同步
+  }
+  Snake.UI = { init, updateHud };
+})();
