@@ -8,7 +8,9 @@
 
 ## 在线试玩
 
-部署到 GitHub Pages 后即可游玩：`https://<用户名>.github.io/<仓库名>/`
+**https://kkkk16689.github.io/isometric-snake/**
+
+> 仓库 Settings → Pages → Source 选 `main` 分支 `/ (root)`，约 1 分钟后生效。
 
 ## 主题（7 套，一键切换）
 
