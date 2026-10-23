@@ -7,8 +7,7 @@ window.Snake = window.Snake || {};
   /* ---------- 常量 ---------- */
   const K = {
     TW: 30, TH: 15,
-    get HW() { return K.TW / 2; },
-    get HH() { return K.TH / 2; },
+    HW: 15, HH: 7.5,                     // 半格宽/高：TW/TH 派生常量（去 getter，省逐帧热路径开销）
     OY: 34,
     MODES: {
       easy:   { n: 12, start: 220, min: 120, accel: 3, lives: 3, players: 1, foods: 1 },
