@@ -125,3 +125,15 @@ test('SW 断网：导航回退缓存壳，资源回 undefined，跨域与 POST �
   H.events.fetch({ request: { method: 'POST', url: ORIGIN + '/x' }, respondWith: () => assert.fail('POST 不应被接管') });
   assert.equal(H.responded.length, before);
 });
+
+test('SW legacy 直通：/legacy/ 存档页不接管——不缓存、断网也不误回退新版外壳', async () => {
+  const H = loadSW();
+  H.install();
+  await Promise.all(H.waits.splice(0));
+  const before = H.responded.length;
+  H.fetchEv(ORIGIN + '/legacy/');
+  H.fetchEv(ORIGIN + '/legacy/index.html');
+  H.sandbox.fetchOnline = false;
+  H.fetchEv(ORIGIN + '/legacy/', 'navigate');
+  assert.equal(H.responded.length, before, '/legacy/ 一律不进 respondWith');
+});
