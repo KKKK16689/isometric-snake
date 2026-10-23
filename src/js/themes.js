@@ -1,4 +1,4 @@
-﻿/* themes.js —— 主题注册表（纯数据驱动）+ 应用/切换/持久化
+/* themes.js —— 主题注册表（纯数据驱动）+ 应用/切换/持久化
    新增主题 = 在 LIST 里追加一个对象；其余逻辑零改动。 */
 window.Snake = window.Snake || {};
 (function () {
@@ -29,7 +29,8 @@ window.Snake = window.Snake || {};
 
   function apply(id, persist) {
     const t = byId(id) || byId(DEF);
-    current = t; if (!t) { console.warn('[themes] 非法主题 id:', id); return; }
+    if (!t) { console.warn('[themes] 非法主题 id:', id); return; }
+    current = t;
     const s = document.documentElement, v = { '--bg': t.css.bg, '--fg': t.css.fg, '--muted': t.css.muted, '--f1': t.css.f1, '--f2': t.css.f2, '--edge': t.css.edge, '--btn': t.css.btn };
     Object.keys(v).forEach(k => s.style.setProperty(k, v[k]));       // 覆盖 base.css 默认变量
     s.dataset.theme = t.id;

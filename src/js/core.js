@@ -1,4 +1,4 @@
-﻿/* core.js —— 游戏规则与状态（唯一真相）
+/* core.js —— 游戏规则与状态（唯一真相）
    约束：不碰 DOM / CSS / 音频 / 粒子 / 绘制；对表现层只通过 bus 事件与只读状态 S 通信。 */
 window.Snake = window.Snake || {};
 (function () {
@@ -35,6 +35,10 @@ window.Snake = window.Snake || {};
     SCREEN: {
       up:    [[0, -1], [1, 0]], down: [[0, 1], [-1, 0]],
       left:  [[-1, 0], [0, -1]], right: [[1, 0], [0, 1]]
+    },
+    /* 集中调参表：散在各模块的魔法数收拢于此（平衡性迭代 / 文档 / 测试共用） */
+    TUNE: {
+      lowFxOn: .032, lowFxOff: .020, lowFxRecover: 120  // render 帧耗时 EMA：超过 on 降级，低于 off 连续 recover 帧恢复
     }
   };
 
@@ -43,7 +47,7 @@ window.Snake = window.Snake || {};
     N: 12, W: 380, H: 240, OX: 190,
     lowFx: false, frameDt: .016,        // lowFx 由 render 检测并写入
     mode: 'easy', pl: [], foods: [], state: 'ready', msg: '', last: 0,
-    best: 0, wins: [0, 0], winner: -1, tickN: 0, overAt: 0, skin: [0, 1]
+    best: 0, wins: [0, 0], winner: -1, tickN: 0, overAt: 0, skin: [0, 1], fxGood: 0
   };
 
   /* ---------- 事件总线 ---------- */
@@ -79,23 +83,42 @@ window.Snake = window.Snake || {};
     S.N = n; S.W = n * K.TW + 20; S.H = n * K.TH + K.OY + 12; S.OX = S.W / 2;
     bus.emit('resize', { n });           // render 监听并同步 canvas 尺寸
   }
-  function loadBest() { S.best = +safeGet('iso-snake-best-' + S.mode, 0) || 0; }
+  const bestKey = () => 'iso-snake-best-' + S.mode;
+  function loadBest() { S.best = +safeGet(bestKey(), 0) || 0; }
   function spawn(i, p) {
     const two = K.MODES[S.mode].players === 2;
     const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
     p.body = xs.map(x => ({ x, y })); p.dir = i ? K.DIRS.upLeft : K.DIRS.downRight; p.queue = []; p.dead = false;
   }
-  function fillFoods() {
-    while (S.foods.length < K.MODES[S.mode].foods) {
-      let f;
-      do { f = { x: rand(S.N), y: rand(S.N) }; }
-      while (S.pl.some(p => p.body.some(s => s.x === f.x && s.y === f.y)) || S.foods.some(o => o.x === f.x && o.y === f.y));
-      S.foods.push(f);
+  function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
+    const want = K.MODES[S.mode].foods;
+    if (S.foods.length >= want) return;
+    const taken = new Set();
+    S.pl.forEach(p => p.body.forEach(s => taken.add(s.x * 1024 + s.y)));
+    S.foods.forEach(f => taken.add(f.x * 1024 + f.y));
+    const free = [];
+    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) if (!taken.has(x * 1024 + y)) free.push({ x, y });
+    while (S.foods.length < want) {
+      if (!free.length) { boardFull(); return; }
+      const k = rand(free.length);
+      S.foods.push(free[k]); free.splice(k, 1);
     }
+  }
+  function boardFull() { // 棋盘被蛇填满：单人视为获胜，双人判平局
+    S.state = 'over'; S.overAt = performance.now();
+    if (K.MODES[S.mode].players === 1) {
+      const p = S.pl[0]; S.msg = '棋盘填满 · ' + p.score + ' 分';
+      if (p.score > S.best) { S.best = p.score; safeSet(bestKey(), S.best); }
+      bus.emit('win', { winner: 0, full: true });
+    } else {
+      S.winner = -1; S.msg = '棋盘填满 · 平局';
+      bus.emit('win', { winner: -1, full: true });
+    }
+    bus.emit('hud');
   }
   function newGame() {
     const m = K.MODES[S.mode]; setSize(m.n);
-    S.tickN = 0; S.lowFx = false; S.frameDt = .016;
+    S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
     S.pl = [...Array(m.players)].map((_, i) => {
       const p = { score: 0, lives: m.lives, energy: 100, locked: false, hold: false, sprint: false, trail: [], streak: 0, ai: !!m.ai && i === 1 };
       spawn(i, p); return p;
@@ -162,7 +185,7 @@ window.Snake = window.Snake || {};
     S.state = 'over'; S.overAt = performance.now();
     if (K.MODES[S.mode].players === 1) {
       const p = S.pl[0]; p.dead = true;
-      if (p.score > S.best) { S.best = p.score; safeSet('iso-snake-best-' + S.mode, S.best); }
+      if (p.score > S.best) { S.best = p.score; safeSet(bestKey(), S.best); }
       bus.emit('lose', { i: 0 });
     } else {
       const alive = S.pl.map((p, i) => p.dead ? -1 : i).filter(i => i >= 0);
