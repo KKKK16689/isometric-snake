@@ -87,9 +87,9 @@ body.im main{touch-action:none}
 body.im h1,body.im .tip{display:none}
 body.im .stage{display:contents}
 body.im canvas{max-width:100%;max-height:100%;align-self:center} /* 宽高由 fitCanvas 内联像素值给定，保比例防拉伸 */
-body.im .hud{position:absolute;top:6px;left:10px;right:10px;margin:0;pointer-events:none;z-index:1}
-body.im .mode{position:absolute;top:4px;left:50%;transform:translateX(-50%);margin:0;z-index:2;flex-wrap:wrap;justify-content:center;row-gap:4px;max-width:calc(100vw - 16px);white-space:nowrap}
-body.im .mode button{font-size:12px;padding:3px 10px}
+body.im .hud{position:absolute;bottom:10px;left:50%;right:auto;transform:translateX(-50%);margin:0;pointer-events:none;z-index:3;white-space:nowrap} /* 沉浸：HUD 移到底部居中——顶部让给工具栏，杜绝按钮与分数重叠 */
+body.im .mode{position:absolute;top:4px;left:50%;transform:translateX(-50%);margin:0;z-index:2;flex-wrap:wrap;justify-content:center;gap:4px 6px;max-width:calc(100vw - 16px);white-space:nowrap}
+body.im .mode button{font-size:12px;padding:3px 9px}
 body.im .mode select{font-size:12px;padding:3px 8px}
 body.im .pad{position:absolute;bottom:8px;width:132px;margin:0;gap:6px;z-index:2}
 body.im .pad[data-p="0"]{left:10px}
@@ -97,7 +97,7 @@ body.im .pad[data-p="1"]{display:grid;right:10px}
 body.im .pad button{font-size:20px;padding:10px 0;opacity:.85}
 body.im .sw{display:grid;grid-template-columns:repeat(3,24px);gap:4px;position:absolute;top:84px;z-index:2}
 body.im .dot{width:24px;height:24px}
-body.im .cmp{top:30px;width:44px}
+body.im .cmp{top:34px;width:44px} /* 顶部 4–30px 是工具栏带，罗盘下移避让 */
 body.im .cmp[data-p="0"]{left:10px}
 body.im .cmp[data-p="1"]{display:block;right:10px}
 body.im .eb{position:absolute;top:48px;width:76px;margin:0;z-index:2}
@@ -106,12 +106,13 @@ body.im .eb[data-p="1"]{display:block;right:62px}
 body.ai .pad[data-p="1"],body.ai .cmp[data-p="1"]{display:none}
 body.im .sw[data-p="0"]{left:10px}
 body.im .sw[data-p="1"]{right:10px}
-body.im .th{position:absolute;top:36px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:nowrap;gap:6px;margin:0;z-index:2} /* 沉浸下主题点悬浮（双人顶中避让 P2 罗盘/能量条） */
-body.im:not(.pk) .th{left:auto;right:10px;transform:none} /* 单人右上 */
+body.im .th{position:absolute;top:34px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:nowrap;gap:6px;margin:0;z-index:2} /* 沉浸：主题点统一居中悬在工具栏正下方（窄屏见下方媒体查询移到底部） */
 body.im .th .dot{width:20px;height:20px}
 body.im:not(.pk) .pad[data-p="0"]{left:auto;right:10px} /* 单人沉浸：pad 右下 */
-body.im:not(.pk) .eb[data-p="0"]{left:auto;right:10px;top:64px} /* 单人沉浸：能量条右上让位主题点 */
+body.im:not(.pk) .eb[data-p="0"]{left:auto;right:10px;top:40px} /* 单人沉浸：能量条右上（主题点已移居工具栏下方，不再让位） */
 body.im:not(.pk) .sw[data-p="1"],body.im:not(.pk) .cmp[data-p="1"],body.im:not(.pk) .eb[data-p="1"],body.im:not(.pk) .pad[data-p="1"]{display:none} /* 单人沉浸隐藏 P2 专属 UI */
+body.im #toast{bottom:44px} /* 沉浸：toast 抬到底部 HUD 之上 */
+@media (max-width:899px){body.im .th{top:auto;bottom:36px}body.im #toast{bottom:70px}} /* 窄屏沉浸：工具栏可能换行，主题点移到底部居中（HUD 之上），toast 再抬一级 */
 @media (orientation:portrait){body.pk:not(.im){overflow:auto}body.pk:not(.im) main{height:auto;display:block;padding:16px}body.pk:not(.im) .hud,body.pk:not(.im) .mode{position:static;transform:none;margin:0 0 8px}body.pk:not(.im) .mode button{font-size:14px;padding:6px 16px}body.pk:not(.im) .stage{display:none}body.pk:not(.im) .rotate{display:block}}
 </style>
 </head>
@@ -121,23 +122,23 @@ body.im:not(.pk) .sw[data-p="1"],body.im:not(.pk) .cmp[data-p="1"],body.im:not(.
 <div class="mode">
 <button data-m="easy" class="on">简单</button>
 <button data-m="normal">普通</button>
-<button data-m="pk">双人对战</button>
-<button data-m="ai">人机对战</button>
+<button data-m="pk" title="双人对战（同屏）">双人</button>
+<button data-m="ai" title="人机对战">人机</button>
 <button id="aiLv">AI 普通</button>
-<button id="fs">全屏</button>
-<button id="snd">音效 开</button>
-<button id="mus">音乐 关</button>
-<button id="vib">震动 开</button>
-<button id="daily">每日挑战</button>
-<button id="ghost">幽灵 关</button>
-<button id="copy">复制成绩</button>
-<select id="spr" aria-label="冲刺音效">
-<option value="b">冲刺 喷气</option>
-<option value="c">冲刺 蓄能</option>
-<option value="f">冲刺 街机</option>
-<option value="g">冲刺 脉冲</option>
-<option value="h">冲刺 引擎</option>
-<option value="i">冲刺 电弧</option>
+<button id="fs" title="全屏">全屏</button>
+<button id="snd" title="音效：开">音效</button>
+<button id="mus" title="音乐：关">音乐</button>
+<button id="vib" title="震动反馈：开">震动</button>
+<button id="daily" title="每日挑战：全球同一张棋盘">每日挑战</button>
+<button id="ghost" title="幽灵回放：关">幽灵</button>
+<button id="copy" title="复制本局成绩">复制成绩</button>
+<select id="spr" aria-label="冲刺音效" title="冲刺音效">
+<option value="b">喷气</option>
+<option value="c">蓄能</option>
+<option value="f">街机</option>
+<option value="g">脉冲</option>
+<option value="h">引擎</option>
+<option value="i">电弧</option>
 </select>
 </div>
 <div class="th"></div>
@@ -786,7 +787,7 @@ window.Snake = window.Snake || {};
     soundOn = K.safeGet('snake.snd', '1') !== '0';
     musicOn = K.safeGet('snake.music', '0') === '1';
     const snd = document.getElementById('snd'), mus = document.getElementById('mus');
-    const label = (b, on, t) => { b.textContent = t + ' ' + (on ? '开' : '关'); };
+    const label = (b, on, t) => { b.textContent = t; b.classList.toggle('off', !on); b.title = t + '：' + (on ? '开' : '关'); };   // 短文案省宽度，开关态用 .off 置灰 + title
     label(snd, soundOn, '音效'); label(mus, musicOn, '音乐');
     snd.addEventListener('click', e => {
       soundOn = !soundOn; K.safeSet('snake.snd', soundOn ? '1' : '0'); label(snd, soundOn, '音效'); snd.blur();
@@ -1436,7 +1437,7 @@ window.Snake = window.Snake || {};
     let vibOn = K.safeGet('iso-snake-vib', '1') !== '0';
     const vib = ms => { if (vibOn && !RM.matches && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } };
     const vibBtn = $('vib');
-    const vibLabel = () => { vibBtn.textContent = '震动 ' + (vibOn ? '开' : '关'); vibBtn.classList.toggle('off', !vibOn); };
+    const vibLabel = () => { vibBtn.textContent = '震动'; vibBtn.classList.toggle('off', !vibOn); vibBtn.title = '震动反馈：' + (vibOn ? '开' : '关'); };
     vibBtn.addEventListener('click', () => {
       vibBtn.blur(); vibOn = !vibOn; K.safeSet('iso-snake-vib', vibOn ? '1' : '0'); vibLabel();
       if (vibOn) vib(12);                                  // 开启时震一下作确认
@@ -1462,7 +1463,7 @@ window.Snake = window.Snake || {};
       toast('每日挑战 · 种子 ' + S.seed + ' · 和全世界同一局');
     });
     const ghostBtn = $('ghost');
-    const ghostLabel = () => { ghostBtn.textContent = '幽灵 ' + (S.ghostOn ? '开' : '关'); ghostBtn.classList.toggle('off', !S.ghostOn); };
+    const ghostLabel = () => { ghostBtn.textContent = '幽灵'; ghostBtn.classList.toggle('off', !S.ghostOn); ghostBtn.title = '幽灵回放：' + (S.ghostOn ? '开' : '关'); };
     ghostBtn.addEventListener('click', () => {
       ghostBtn.blur();
       if (!S.ghostOn && !S.ghost) { toast('还没有幽灵数据：破纪录时自动保存你的路径'); return; }
