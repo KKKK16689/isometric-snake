@@ -15,6 +15,8 @@
 
 > 仓库 Settings → Pages → Source 选 `main` 分支 `/ (root)`，约 1 分钟后生效。
 
+旧版 v3 存档（字节级原样，标签 `v3.0.0`）：**https://kkkk16689.github.io/isometric-snake/legacy/**
+
 ## 主题（7 套，一键切换）
 
 霓虹夜 · 冰川 · 赛博 · 糖果 · 熔岩 · 森林 · 沙漠
