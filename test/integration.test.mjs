@@ -292,9 +292,29 @@ test('集成：主题全遍历（7 主题 × 7 地板图案 + 色点点击 + 元
   assert.equal(H.document.documentElement.dataset.theme, list[list.length - 1].id);
   H.clickEl(H.thEl.children[2]);                 // 色点点击 → 应用并持久化
   assert.equal(H.sb.Snake.theme.current.id, list[2].id);
-  assert.equal(H.store.get('snake.theme'), list[2].id);
+  assert.equal(H.store.get('iso-snake-theme'), list[2].id);
   H.drive(10);
   assert.ok(H.C.drawImage > 0);
+});
+
+test('集成：旧存储键一次性迁移（snake.* 偏好 → iso-snake-*，旧键保留）', () => {
+  const H = makeDom({ store: { 'snake.theme': 'cyber', 'snake.snd': '0', 'snake.music': '1', 'snake.sprint': 'g' } });
+  boot(H);
+  assert.equal(H.store.get('iso-snake-theme'), 'cyber');
+  assert.equal(H.store.get('iso-snake-snd'), '0');
+  assert.equal(H.store.get('iso-snake-music'), '1');
+  assert.equal(H.store.get('iso-snake-sprint'), 'g');
+  assert.equal(H.store.get('snake.theme'), 'cyber');        // 旧键保留不删（回滚安全）
+  assert.equal(H.sb.Snake.theme.current.id, 'cyber');       // 迁移后的主题真生效
+  assert.ok(H.byId.snd.classList.contains('off'));          // 音效关闭状态生效
+  assert.equal(H.byId.snd.title, '音效：关');
+  assert.ok(!H.byId.mus.classList.contains('off'));         // 音乐开启状态生效
+  H.drive(5);
+  // 新键已有值时不被旧键覆盖
+  const H2 = makeDom({ store: { 'snake.theme': 'lava', 'iso-snake-theme': 'candy' } });
+  boot(H2);
+  assert.equal(H2.store.get('iso-snake-theme'), 'candy');
+  assert.equal(H2.sb.Snake.theme.current.id, 'candy');
 });
 
 test('集成：四模式巡回 + 冲刺音色全遍历 + 音乐开关', () => {
@@ -309,7 +329,7 @@ test('集成：四模式巡回 + 冲刺音色全遍历 + 音乐开关', () => {
   H.api.setMode('normal'); H.api.start(); H.drive(10);
   for (const id of ['b', 'c', 'f', 'g', 'h', 'i']) {
     H.byId.spr.value = id; H.fireEl(H.byId.spr, 'change', {});
-    assert.equal(H.store.get('snake.sprint'), id);
+    assert.equal(H.store.get('iso-snake-sprint'), id);
     H.api.setHold(0, true); H.drive(12); H.api.setHold(0, false); H.drive(6);
   }
   H.clickEl(H.byId.mus); H.drive(30); H.clickEl(H.byId.mus);   // BGM 开/关（interval 桩不触发，仅覆盖启停）

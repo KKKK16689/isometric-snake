@@ -313,6 +313,12 @@ window.Snake = window.Snake || {};
   loadStats();
   S.ghostOn = safeGet('iso-snake-ghost-on', '0') === '1';
 
+  /* 2.0：存储键统一 iso-snake-* 前缀——旧 snake.* 偏好一次性迁移（旧键保留不删，便于回滚）。
+     必须在各表现层模块 init() 读键之前跑；core.js 最先加载，天然满足。 */
+  for (const [o, n] of [['snake.theme', 'iso-snake-theme'], ['snake.snd', 'iso-snake-snd'], ['snake.music', 'iso-snake-music'], ['snake.sprint', 'iso-snake-sprint']]) {
+    if (safeGet(n, null) === null) { const v = safeGet(o, null); if (v !== null) safeSet(n, v); }
+  }
+
   /* 工具注册进 K 供各表现层模块使用（内部仍用裸名） */
   K.rand = rand; K.safeGet = safeGet; K.safeSet = safeSet; K.nm = nm;
   K.P = P; K.fr = fr; K.rgba = rgba; K.shades = shades;
