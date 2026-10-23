@@ -1,4 +1,4 @@
-﻿/* input.js —— 输入归一化为方向指令 + HUD/状态条等 DOM 更新。
+/* input.js —— 输入归一化为方向指令 + HUD/状态条等 DOM 更新。
    键盘/触屏按钮/滑动/暂停 → api；不直接改渲染与音频。 */
 window.Snake = window.Snake || {};
 (function () {
@@ -77,6 +77,9 @@ window.Snake = window.Snake || {};
     });
     addEventListener('keyup', e => { const s = SPKEYS[e.code]; if (s !== undefined) api.setHold(S.mode === 'pk' ? s : 0, false); });
     addEventListener('blur', () => S.pl.forEach(p => p.hold = false));
+    document.addEventListener('visibilitychange', () => { // 切后台自动暂停，回来不会盲走暴毙
+      if (document.hidden) { S.pl.forEach(p => p.hold = false); if (S.state === 'playing') api.togglePause(); }
+    });
 
     document.querySelectorAll('.pad button[data-s]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); api.press(+b.parentElement.dataset.p, b.dataset.s); }));
     document.querySelectorAll('.pad .sp').forEach(b => { // 按住冲刺

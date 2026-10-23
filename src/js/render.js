@@ -1,4 +1,4 @@
-﻿/* render.js —— 一切 canvas 绘制。只读状态；不改游戏状态（lowFx 检测除外）。 */
+/* render.js —— 一切 canvas 绘制。只读状态；不改游戏状态（lowFx 检测除外）。 */
 window.Snake = window.Snake || {};
 (function () {
   'use strict';
@@ -170,7 +170,12 @@ window.Snake = window.Snake || {};
     vignette();
     drawBoard();
     const raw = (t - (draw.t || t)) / 1000, dt = Math.min(.05, raw); draw.t = t;
-    S.frameDt = S.frameDt * .95 + Math.min(.2, raw) * .05; if (S.frameDt > .032) S.lowFx = true; // 低端机自动关辉光
+    if (!document.hidden) { // 后台标签页的巨帧不参与性能判定
+      S.frameDt = S.frameDt * .95 + Math.min(.2, raw) * .05;
+      if (S.frameDt > K.TUNE.lowFxOn) { S.lowFx = true; S.fxGood = 0; }          // 低端机自动关辉光
+      else if (S.frameDt < K.TUNE.lowFxOff) { if (S.lowFx && ++S.fxGood >= K.TUNE.lowFxRecover) { S.lowFx = false; S.fxGood = 0; } } // 滞回恢复：卡顿是暂时的
+      else S.fxGood = 0;
+    }
     const now = performance.now(), fg = K.MODES[S.mode].players === 2 ? '#cbd5e1' : pal.food;
     ctx.globalCompositeOperation = 'lighter';
     S.pl.forEach((p, i) => { // 蛇与食物映在地板的光
@@ -216,7 +221,7 @@ window.Snake = window.Snake || {};
     });
     if (S.state === 'ready') overlay(pk ? (K.MODES[S.mode].ai ? '人机对战' : '双人对战') : '等距贪吃蛇', pk ? (K.MODES[S.mode].ai ? 'WASD 或方向键 · E/Shift 冲刺 · 点击开始' : 'P1 WASD·E 冲刺   P2 方向键·Enter 冲刺') : '点击画面或按方向键开始');
     else if (S.state === 'paused') overlay(S.msg || '已暂停', '点击画面或按空格继续');
-    else if (S.state === 'over') overlay(pk ? (S.winner < 0 ? '平局' : K.MODES[S.mode].ai ? (S.winner ? 'AI 获胜' : '你赢了') : 'P' + (S.winner + 1) + ' 获胜') : '游戏结束 · ' + S.pl[0].score + ' 分', '点击画面重新开始');
+    else if (S.state === 'over') overlay(S.msg || (pk ? (S.winner < 0 ? '平局' : K.MODES[S.mode].ai ? (S.winner ? 'AI 获胜' : '你赢了') : 'P' + (S.winner + 1) + ' 获胜') : '游戏结束 · ' + S.pl[0].score + ' 分'), '点击画面重新开始');
   }
   function frame(t) {
     api.update(t);                       // core 追赶式 tick
