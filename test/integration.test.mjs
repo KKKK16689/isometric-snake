@@ -135,7 +135,8 @@ function makeDom(opts = {}) {
   };
 
   vm.createContext(sb);
-  for (const f of FILES) vm.runInContext(fs.readFileSync(path.join(SRC, f + '.js'), 'utf8'), sb, { filename: f + '.js' });
+  if (opts.scripts) for (const s of opts.scripts) vm.runInContext(s.code, sb, { filename: s.name });   // 构建产物模式：直接执行内联脚本（含启动块）
+  else for (const f of FILES) vm.runInContext(fs.readFileSync(path.join(SRC, f + '.js'), 'utf8'), sb, { filename: f + '.js' });
 
   /* ---------- 驱动辅助 ---------- */
   function flushTimers() {
@@ -373,4 +374,25 @@ test('集成：减弱动态（reduced-motion）→ 强制降级特效 + 禁震�
   for (let i = 0; i < 600 && H.S.state !== 'over'; i++) { H.drive(1); }   // 撞墙：震屏被 RM 门跳过
   assert.equal(H.S.state, 'over');
   H.drive(20);
+});
+
+/* ---------- 9. 构建产物端到端：直接执行根目录 index.html 的全部内联 <script>（8 模块 + 启动块），
+      验证用户实际拿到的交付物本身可运行（内联顺序、build.js 替换完整性） ---------- */
+test('集成：构建产物 index.html 端到端（内联脚本直跑）', () => {
+  const html = fs.readFileSync(path.join(DIR, '..', 'index.html'), 'utf8');
+  assert.ok(!/<script\b[^>]*\bsrc=/.test(html), '构建产物不应残留外部 <script src>');
+  assert.ok(!/<link\b[^>]*\brel=["']stylesheet["']/i.test(html), '构建产物不应残留外部样式表');
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/gi)].map((m, i) => ({ name: 'index.html#script' + i, code: m[1] }));
+  assert.ok(scripts.length >= 9, `内联脚本块数 ${scripts.length} 应 ≥ 9（8 模块 + 启动块）`);
+  const H = makeDom({ scripts });                 // 启动块随内联脚本自动执行 → 不再手动 boot
+  const { Snake } = H.sb;
+  for (const k of ['S', 'K', 'api', 'bus', 'theme', 'Audio', 'UI', 'Render', 'Ai', 'hooks']) assert.ok(Snake[k], `Snake.${k} 导出缺失`);
+  assert.equal(H.S.state, 'ready', '启动块应完成 api.reset()');
+  H.key('KeyW'); H.drive(30);
+  assert.equal(H.S.state, 'playing');
+  const p = H.S.pl[0];
+  autoPlay(H, 120);                               // 确定性喂食
+  assert.ok(H.C.fillRect > 0 && H.C.drawImage > 0, '产物应有真实渲染调用');
+  assert.ok(p.body.length >= 4, `蛇应生长（实际 ${p.body.length}）`);
+  assert.ok(H.vibes.length > 0, '吃食震动应触发');
 });
