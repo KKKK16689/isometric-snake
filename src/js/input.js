@@ -23,19 +23,28 @@ window.Snake = window.Snake || {};
   }
   const ebs = document.querySelectorAll('.eb'), sps = document.querySelectorAll('.pad .sp'),
         hds = document.querySelectorAll('.cmp .hd'), fds = document.querySelectorAll('.cmp .fd'), cmps = document.querySelectorAll('.cmp');
+  const barCache = [{}, {}];             // 变更检测：值没变就不写 DOM（并入 render 单 rAF 后每帧调用，避免无谓样式重算）
   function updateBars() {
     S.pl.forEach((p, i) => {
       if (!ebs[i]) return;
-      ebs[i].firstElementChild.style.width = Math.round(p.energy) + '%';
-      ebs[i].classList.toggle('lock', p.locked); ebs[i].classList.toggle('on', p.sprint);
-      sps[i].classList.toggle('on', p.sprint);
-      // 罗盘：箭头 = 朝向，橙点 = 最近食物（均按屏上视角）
+      const c = barCache[i];
+      const ew = Math.round(p.energy) + '%';
+      if (c.ew !== ew) { c.ew = ew; ebs[i].firstElementChild.style.width = ew; }
+      if (c.lock !== p.locked) { c.lock = p.locked; ebs[i].classList.toggle('lock', p.locked); }
+      if (c.spr !== p.sprint) { c.spr = p.sprint; ebs[i].classList.toggle('on', p.sprint); sps[i].classList.toggle('on', p.sprint); }
+      // 罗盘：箭头 = 朝向，橙点 = 最近食物（均按屏上视角）；角度量化到整度，不变不写
       const d = p.dir, h = p.body[0];
-      hds[i].style.transform = 'rotate(' + (Math.atan2((d[0] + d[1]) * K.HH, (d[0] - d[1]) * K.HW) * 57.3).toFixed(0) + 'deg)';
+      const hr = 'rotate(' + (Math.atan2((d[0] + d[1]) * K.HH, (d[0] - d[1]) * K.HW) * 57.3).toFixed(0) + 'deg)';
+      if (c.hr !== hr) { c.hr = hr; hds[i].style.transform = hr; }
       let f = null, bd = 1e9;
       S.foods.forEach(o => { const m = Math.abs(o.x - h.x) + Math.abs(o.y - h.y); if (m < bd) { bd = m; f = o; } });
-      if (f) { const ex = f.x - h.x, ey = f.y - h.y; fds[i].style.transform = 'rotate(' + (Math.atan2((ex + ey) * K.HH, (ex - ey) * K.HW) * 57.3).toFixed(0) + 'deg)'; }
-      cmps[i].style.setProperty('--hc', K.SK[S.skin[i]].body[1]);
+      if (f) {
+        const ex = f.x - h.x, ey = f.y - h.y;
+        const fr = 'rotate(' + (Math.atan2((ex + ey) * K.HH, (ex - ey) * K.HW) * 57.3).toFixed(0) + 'deg)';
+        if (c.fr !== fr) { c.fr = fr; fds[i].style.transform = fr; }
+      }
+      const hc = K.SK[S.skin[i]].body[1];
+      if (c.hc !== hc) { c.hc = hc; cmps[i].style.setProperty('--hc', hc); }
     });
   }
 
@@ -190,7 +199,7 @@ window.Snake = window.Snake || {};
     bus.on('win', e => say(e.winner < 0 ? '平局' : K.nm(e.winner) + ' 获胜'));
 
     bus.on('hud', updateHud);
-    (function ui() { updateBars(); requestAnimationFrame(ui); })(); // 状态条/罗盘每帧同步
+    Snake.uiTick = updateBars;   // 并入 render 的唯一 rAF 循环（render.frame 末尾调用），去掉第二条 rAF
   }
   Snake.UI = { init, updateHud };
 })();
