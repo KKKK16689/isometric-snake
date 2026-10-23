@@ -9,6 +9,8 @@ h1{font-size:20px;font-weight:600;margin:0 0 8px}
 .mode button{font-size:14px;padding:6px 16px;border-radius:999px;border:1px solid var(--edge);background:var(--btn);color:var(--fg)}
 .mode button.on{background:var(--fg);color:var(--bg)}
 .mode button.off{opacity:.55}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);background:rgba(18,22,30,.92);color:#fff;font-size:14px;line-height:1.4;padding:8px 18px;border-radius:999px;border:1px solid rgba(255,255,255,.14);opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;z-index:60;max-width:86vw;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .mode select{font-size:14px;padding:6px 10px;border-radius:999px;border:1px solid var(--edge);background:var(--btn);color:var(--fg)}
 #aiLv{display:none}
 body.ai #aiLv{display:inline-block}

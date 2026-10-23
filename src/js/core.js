@@ -39,7 +39,8 @@ window.Snake = window.Snake || {};
     /* 集中调参表：散在各模块的魔法数收拢于此（平衡性迭代 / 文档 / 测试共用） */
     TUNE: {
       lowFxOn: .032, lowFxOff: .020, lowFxRecover: 120,  // render 帧耗时 EMA：超过 on 降级，低于 off 连续 recover 帧恢复
-      comboWindow: 6000, comboBonus: 1                   // 连击：6s 内持续吃食，第 2 个起每个额外 +1（×2 封顶）
+      comboWindow: 6000, comboBonus: 1,                  // 连击：6s 内持续吃食，第 2 个起每个额外 +1（×2 封顶）
+      goldChance: .12, goldTtl: 6000, goldScore: 3, goldEnergy: 30   // 金苹果：每次吃食后 12% 概率出现，6s 过期，+3 分 +30 能量
     }
   };
 
@@ -48,7 +49,12 @@ window.Snake = window.Snake || {};
     N: 12, W: 380, H: 240, OX: 190,
     lowFx: false, frameDt: .016,        // lowFx 由 render 检测并写入
     mode: 'easy', pl: [], foods: [], state: 'ready', msg: '', last: 0,
-    best: 0, wins: [0, 0], winner: -1, tickN: 0, overAt: 0, skin: [0, 1], fxGood: 0
+    best: 0, wins: [0, 0], winner: -1, tickN: 0, overAt: 0, skin: [0, 1], fxGood: 0,
+    seed: 0, daily: false,              // 每日挑战：随机种子（0=未播种），daily 标记决定徽章/成绩文案
+    gold: null,                         // 金苹果 {x, y, born}，born 以游戏时钟计
+    rec: [], myMoves: 0,                // 幽灵录制：p0 每步头格 [x,y,x,y,…] 与已走步数
+    ghost: null, ghostMeta: null, ghostOn: false,   // 幽灵回放：破纪录时存档，newGame 时加载
+    stats: { games: 0, food: 0, gold: 0 }, resultText: ''   // 本地累计统计 + 结算分享文案
   };
 
   /* ---------- 事件总线 ---------- */
@@ -62,7 +68,14 @@ window.Snake = window.Snake || {};
   })();
 
   /* ---------- 纯函数工具 ---------- */
-  const rand = n => Math.floor(Math.random() * n);
+  /* mulberry32 种子随机：每日挑战启用。只有"逻辑随机"（食物/金苹果落点）走这里；
+     粒子、闪电等视觉随机仍用 Math.random，不消耗种子流，保证同种子同操作 → 同一局 */
+  function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  let seedFn = null;
+  const rand = n => Math.floor((seedFn ? seedFn() : Math.random()) * n);
+  function setSeed(s) { seedFn = s ? mulberry32(s) : null; S.seed = s || 0; }
+  const dateSeed = () => { const d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
+  const dateStr = s => (s >= 19000101 && s <= 99991231) ? ((s / 10000) | 0) + '-' + String(((s / 100) % 100) | 0).padStart(2, '0') + '-' + String(s % 100).padStart(2, '0') : '';   // 仅日期形种子可转日期
   const safeGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
   const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
   const nm = i => (K.MODES[S.mode].ai ? (i ? 'AI' : '你') : 'P' + (i + 1));
@@ -85,7 +98,32 @@ window.Snake = window.Snake || {};
     bus.emit('resize', { n });           // render 监听并同步 canvas 尺寸
   }
   const bestKey = () => 'iso-snake-best2-' + S.mode;   // 连击计分为新榜（旧 best 键保留不迁移，两榜独立）
+  const ghostKey = () => 'iso-snake-ghost-' + S.mode;  // 幽灵存档按模式分开（棋盘尺寸不同）
   function loadBest() { S.best = +safeGet(bestKey(), 0) || 0; }
+  /* 本地统计（累计局数/食物/金苹果），持久化于 iso-snake-stats */
+  function loadStats() { try { const o = JSON.parse(safeGet('iso-snake-stats', '{}')); S.stats = { games: +o.games || 0, food: +o.food || 0, gold: +o.gold || 0 }; } catch (e) {} }
+  function persistStats() { safeSet('iso-snake-stats', JSON.stringify(S.stats)); }
+  /* 幽灵回放：破纪录时把整条路径存档；newGame 时加载当前模式的存档 */
+  function loadGhost() {
+    try {
+      const g = JSON.parse(safeGet(ghostKey(), 'null'));
+      S.ghost = g && Array.isArray(g.path) && g.path.length >= 4 ? g.path : null;
+      S.ghostMeta = S.ghost ? { score: g.score | 0, date: g.ts ? new Date(g.ts).toLocaleDateString() : '' } : null;
+    } catch (e) { S.ghost = null; S.ghostMeta = null; }
+  }
+  function saveGhost(p) { if (S.rec.length >= 4) safeSet(ghostKey(), JSON.stringify({ score: p.score, ts: Date.now(), path: S.rec })); }
+  /* 结算分享文案（复制成绩按钮用） */
+  const MODE_NAME = { easy: '简单', normal: '普通', pk: '双人对战', ai: '人机对战' };
+  const URL_HOME = 'https://kkkk16689.github.io/isometric-snake/';
+  function buildResultText() {
+    if (K.MODES[S.mode].players === 1) {
+      const p = S.pl[0], ds = dateStr(S.seed);
+      return S.daily
+        ? '等距贪吃蛇 2.0 · 每日挑战' + (ds ? ' ' + ds : '') + '（种子 ' + S.seed + '）：得分 ' + p.score + '，长度 ' + p.body.length + '。来战：' + URL_HOME + '?daily=1'
+        : '等距贪吃蛇 2.0 · ' + MODE_NAME[S.mode] + '：得分 ' + p.score + '，长度 ' + p.body.length + '。来战：' + URL_HOME;
+    }
+    return '等距贪吃蛇 2.0 · ' + MODE_NAME[S.mode] + '：' + (S.winner >= 0 ? nm(S.winner) + ' 胜' : '平局') + '（' + S.pl.map(p => p.score).join(' : ') + '）。来战：' + URL_HOME;
+  }
   function spawn(i, p) {
     const two = K.MODES[S.mode].players === 2;
     const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
@@ -106,20 +144,34 @@ window.Snake = window.Snake || {};
       S.foods.push(free[k]); free.splice(k, 1);
     }
   }
+  function spawnGold(now) {   // 金苹果落在任意空格（与蛇身/普通食物互斥）
+    const taken = new Set();
+    S.pl.forEach(p => p.body.forEach(s => taken.add(s.x * 1024 + s.y)));
+    S.foods.forEach(f => taken.add(f.x * 1024 + f.y));
+    const free = [];
+    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) if (!taken.has(x * 1024 + y)) free.push({ x, y });
+    if (!free.length) return;
+    const c = free[rand(free.length)];
+    S.gold = { x: c.x, y: c.y, born: now };
+    bus.emit('goldSpawn', { x: c.x, y: c.y });
+  }
   function boardFull() { // 棋盘被蛇填满：单人视为获胜，双人判平局
     S.state = 'over'; S.overAt = performance.now();
+    S.stats.games++; persistStats();
     if (K.MODES[S.mode].players === 1) {
       const p = S.pl[0]; S.msg = '棋盘填满 · ' + p.score + ' 分';
-      if (p.score > S.best) { S.best = p.score; safeSet(bestKey(), S.best); }
+      if (p.score > S.best) { S.best = p.score; safeSet(bestKey(), S.best); saveGhost(p); }
       bus.emit('win', { winner: 0, full: true });
     } else {
       S.winner = -1; S.msg = '棋盘填满 · 平局';
       bus.emit('win', { winner: -1, full: true });
     }
+    S.resultText = buildResultText();
     bus.emit('hud');
   }
   function newGame() {
     const m = K.MODES[S.mode]; setSize(m.n);
+    if (S.daily && S.seed) setSeed(S.seed);   // 每日挑战重开：随机流复位到同一种子（同种子同局）
     S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
     S.pl = [...Array(m.players)].map((_, i) => {
       const p = { score: 0, lives: m.lives, energy: 100, locked: false, hold: false, sprint: false, trail: [], streak: 0, ai: !!m.ai && i === 1,
@@ -127,6 +179,7 @@ window.Snake = window.Snake || {};
       spawn(i, p); return p;
     });
     S.foods = []; fillFoods(); S.state = 'ready'; S.msg = ''; S.winner = -1;
+    S.gold = null; S.rec = []; S.myMoves = 0; loadGhost();   // 幽灵存档随新一局重载
     bus.emit('hud'); bus.emit('gameStart');
   }
   function turn(p, d) {
@@ -145,6 +198,7 @@ window.Snake = window.Snake || {};
   function step(now) {   // now = 游戏时钟（S.last），与 rAF 的 t 同基准，供插值/连击
     S.tickN++;
     S.pl.forEach(p => { if (p.streak > 0 && now - p.streakAt > K.TUNE.comboWindow) p.streak = 0; });   // 连击超时衰减
+    if (S.gold && now - S.gold.born > K.TUNE.goldTtl) S.gold = null;   // 金苹果过期（游戏时钟，暂停不计时）
     S.pl.forEach((p, i) => { if (p.ai && !p.dead && Snake.hooks.think) Snake.hooks.think(p, i); });
     const dt = tickMs() / 1000;
     S.pl.forEach((p, i) => {   // 冲刺耗能 / 恢复；能量归零锁定到 30
@@ -182,21 +236,35 @@ window.Snake = window.Snake || {};
         if (now - p.streakAt > K.TUNE.comboWindow) p.streak = 0;
         p.streak++; p.streakAt = now;
         const gain = 1 + (p.streak >= 2 ? K.TUNE.comboBonus : 0);   // 连击中每个食物 +2（×2 封顶）
-        p.score += gain;
+        p.score += gain; S.stats.food++;
         bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, pts: gain, i });
       }
       else p.tailFrom = p.body.pop();
       p.grew = eat[i] >= 0; p.moveT = now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick
+      if (i === 0) { S.rec.push(hs[i].x, hs[i].y); S.myMoves++; }   // 幽灵录制：p0 每步头格
     });
+    if (S.gold) {   // 金苹果拾取：+3 分 +30 能量，不增长、不影响连击（两蛇同 tick 踩上则先手判给 p0）
+      const gi = hs.findIndex(h => h && h.x === S.gold.x && h.y === S.gold.y);
+      if (gi >= 0) {
+        const p = S.pl[gi];
+        p.score += K.TUNE.goldScore; S.stats.gold++;
+        p.energy = Math.min(100, p.energy + K.TUNE.goldEnergy);
+        if (p.locked && p.energy >= 30) p.locked = false;
+        bus.emit('eat', { x: S.gold.x, y: S.gold.y, pk: K.MODES[S.mode].players === 2, gold: true, pts: K.TUNE.goldScore, streak: p.streak, i: gi });
+        S.gold = null;
+      }
+    }
     const eaten = new Set(eat.filter(k => k >= 0));
     S.foods = S.foods.filter((_, k) => !eaten.has(k)); fillFoods();
+    if (eaten.size && !S.gold && rand(1000) < K.TUNE.goldChance * 1000) spawnGold(now);   // 每次真正吃到食物后掷金苹果
     bus.emit('hud');
   }
   function gameOver() {
     S.state = 'over'; S.overAt = performance.now();
+    S.stats.games++; persistStats();
     if (K.MODES[S.mode].players === 1) {
       const p = S.pl[0]; p.dead = true;
-      if (p.score > S.best) { S.best = p.score; safeSet(bestKey(), S.best); }
+      if (p.score > S.best) { S.best = p.score; safeSet(bestKey(), S.best); saveGhost(p); }   // 破纪录：最高分 + 幽灵存档一起刷新
       bus.emit('lose', { i: 0 });
     } else {
       const alive = S.pl.map((p, i) => p.dead ? -1 : i).filter(i => i >= 0);
@@ -204,6 +272,7 @@ window.Snake = window.Snake || {};
       if (S.winner >= 0) S.wins[S.winner]++;
       bus.emit('win', { winner: S.winner });
     }
+    S.resultText = buildResultText();
     const heads = S.pl.filter(p => p.dead).map(p => ({ x: p.body[0].x, y: p.body[0].y }));
     bus.emit('crash', { heads });
     bus.emit('hud');
@@ -216,8 +285,15 @@ window.Snake = window.Snake || {};
   function togglePause() { if (S.state === 'playing') { S.state = 'paused'; S.msg = ''; } else start(); }
   function press(i, name) { if (S.state !== 'playing') { start(); if (S.state !== 'playing') return; } if (S.pl[i]) steer(S.pl[i], name); }
   const setHold = (i, v) => { if (S.pl[i]) S.pl[i].hold = v; };
-  function setMode(m) { S.mode = m; S.wins = [0, 0]; loadBest(); newGame(); bus.emit('hud'); }
+  function setMode(m) { S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0); loadBest(); newGame(); bus.emit('hud'); }
   function setSkin(p, k) { S.skin[p] = k; bus.emit('hud'); }
+  /* 每日挑战：固定普通模式 + 当日/自定义种子，食物序列可复现 */
+  function startDaily(seed) {
+    S.mode = 'normal'; S.wins = [0, 0]; S.daily = true;
+    setSeed(seed || dateSeed());
+    loadBest(); newGame(); bus.emit('hud');
+  }
+  function setGhostOn(v) { S.ghostOn = !!v; safeSet('iso-snake-ghost-on', S.ghostOn ? '1' : '0'); }
   /* render 每帧调用：追赶式 tick（帧率无关），一帧最多补 3 步 */
   function update(t) {
     if (S.state === 'playing') {
@@ -227,14 +303,21 @@ window.Snake = window.Snake || {};
     }
   }
 
-  const qs = new URLSearchParams(location.search);   // 便于截图/直链分享（?theme= ?mode=），mode 仅初始值
+  const qs = new URLSearchParams(location.search);   // 便于截图/直链分享（?theme= ?mode= ?daily=1 ?seed=N），mode 仅初始值
   if (qs.get('mode') && K.MODES[qs.get('mode')]) S.mode = qs.get('mode');
+  if (qs.get('daily') || qs.get('seed')) {   // ?daily=1 今日种子；?seed=N 自定义种子（均按每日挑战处理，固定普通模式）
+    S.mode = 'normal'; S.daily = true;
+    setSeed((+qs.get('seed') | 0) || dateSeed());
+  }
+  loadStats();
+  S.ghostOn = safeGet('iso-snake-ghost-on', '0') === '1';
 
   /* 工具注册进 K 供各表现层模块使用（内部仍用裸名） */
   K.rand = rand; K.safeGet = safeGet; K.safeSet = safeSet; K.nm = nm;
   K.P = P; K.fr = fr; K.rgba = rgba; K.shades = shades;
+  K.dateSeed = dateSeed; K.dateStr = dateStr; K.setSeed = setSeed; K.MODE_NAME = MODE_NAME;
 
   Snake.K = K; Snake.S = S; Snake.bus = bus;
   Snake.hooks = { think: null };
-  Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, update };
+  Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, update };
 })();

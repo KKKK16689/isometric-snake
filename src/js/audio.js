@@ -1,4 +1,4 @@
-﻿/* audio.js —— WebAudio 全合成音效 + 可选 BGM（零音频资源文件）
+/* audio.js —— WebAudio 全合成音效 + 可选 BGM（零音频资源文件）
    音效：吃食（随连击升调）/ 冲刺（6 套可切换，循环）/ 撞击 / 获胜和弦 / 失败下行音。「音乐」默认关。
    冲刺音色注册表 SPRINTS：新增音色 = 追加一条 {id,name,build}；选择持久化于 localStorage 'snake.sprint'。 */
 window.Snake = window.Snake || {};
@@ -188,7 +188,8 @@ window.Snake = window.Snake || {};
       spr.value = sprintId;
       spr.addEventListener('change', () => { sprintId = spr.value; K.safeSet('snake.sprint', sprintId); spr.blur(); });
     }
-    bus.on('eat', e => {   // 吃食：基础音高随连击阶梯升调（上限后循环）
+    bus.on('eat', e => {   // 吃食：基础音高随连击阶梯升调（上限后循环）；金苹果 = 高音闪烁琶音
+      if (e.gold) { [880, 1174.66, 1567.98].forEach((f, k) => setTimeout(() => tone('triangle', f, f, .12, .1), k * 55)); return; }
       const h = 440 * Math.pow(2, (Math.min(e.streak, 10) - 1) / 12);
       tone('sine', h, h * 1.5, .18, .16);
     });
