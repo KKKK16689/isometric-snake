@@ -403,7 +403,7 @@ window.Snake = window.Snake || {};
         if (now - p.streakAt > K.TUNE.comboWindow) p.streak = 0;
         p.streak++; p.streakAt = now;
         const gain = 1 + (p.streak >= 2 ? K.TUNE.comboBonus : 0);   // 连击中每个食物 +2（×2 封顶）
-        p.score += gain; S.stats.food++;
+        p.score += gain; if (!p.ai) S.stats.food++;   // 统计只记人类玩家（ai 模式对手蛇不计入）
         bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, pts: gain, i });
       }
       else p.tailFrom = p.body.pop();
@@ -414,7 +414,7 @@ window.Snake = window.Snake || {};
       const gi = hs.findIndex(h => h && h.x === S.gold.x && h.y === S.gold.y);
       if (gi >= 0) {
         const p = S.pl[gi];
-        p.score += K.TUNE.goldScore; S.stats.gold++;
+        p.score += K.TUNE.goldScore; if (!p.ai) S.stats.gold++;
         p.energy = Math.min(100, p.energy + K.TUNE.goldEnergy);
         if (p.locked && p.energy >= 30) p.locked = false;
         bus.emit('eat', { x: S.gold.x, y: S.gold.y, pk: K.MODES[S.mode].players === 2, gold: true, pts: K.TUNE.goldScore, streak: p.streak, i: gi });
