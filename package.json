@@ -4,7 +4,8 @@
   "private": true,
   "description": "等距（2.5D）视角贪吃蛇：单 HTML 文件、零依赖、纯 Canvas 渲染",
   "scripts": {
-    "build": "node build.js"
+    "build": "node build.js",
+    "icons": "node tools/gen-icons.mjs"
   },
   "license": "MIT"
 }

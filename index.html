@@ -20,7 +20,9 @@
 <meta property="og:image:alt" content="霓虹夜主题下的等距贪吃蛇棋盘">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://kkkk16689.github.io/isometric-snake/">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <title>等距贪吃蛇</title>
 <style>
 /* 默认主题（霓虹夜）变量兜底：JS 未运行时首屏即默认主题；切换由 themes.js 覆盖同名变量 */
@@ -36,6 +38,8 @@ h1{font-size:20px;font-weight:600;margin:0 0 8px}
 .mode button.off{opacity:.55}
 #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);background:rgba(18,22,30,.92);color:#fff;font-size:14px;line-height:1.4;padding:8px 18px;border-radius:999px;border:1px solid rgba(255,255,255,.14);opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;z-index:60;max-width:86vw;text-align:center}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+@media (prefers-reduced-motion: reduce){#toast{transition:none}.pad button:active{transform:none}.mode button,.pad button{transition:none}}
 .mode select{font-size:14px;padding:6px 10px;border-radius:999px;border:1px solid var(--edge);background:var(--btn);color:var(--fg)}
 #aiLv{display:none}
 body.ai #aiLv{display:inline-block}
@@ -158,6 +162,7 @@ body.im:not(.pk) .sw[data-p="1"],body.im:not(.pk) .cmp[data-p="1"],body.im:not(.
 <div class="rotate">请把手机横过来，开始对战</div>
 <div class="hint" id="hint">像 App 一样全屏打开：<br>iPhone：Safari 点分享，再点“添加到主屏幕”<br>安卓：浏览器菜单里选“添加到主屏幕”或“安装应用”<br><span>点这里关闭</span></div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="live" class="sr-only" aria-live="polite"></div>
 <p class="tip">方向键对应屏幕方向，空格暂停。按住 Shift、E 或 Enter 冲刺，手机按住「冲」键冲刺，也可在棋盘上滑动转向。罗盘里箭头是蛇的朝向，橙点指向最近的食物。简单模式有 3 条命。</p>
 </main>
 <script>
@@ -386,7 +391,7 @@ window.Snake = window.Snake || {};
       const p = S.pl[0];
       if (hit[0]) {
         p.lives--; p.streak = 0;
-        if (p.lives > 0) { spawn(0, p); S.state = 'paused'; S.msg = '撞到了！还剩 ' + p.lives + ' 条命'; bus.emit('hud'); }
+        if (p.lives > 0) { bus.emit('crash', { heads: [hs[0]], partial: true }); spawn(0, p); S.state = 'paused'; S.msg = '撞到了！还剩 ' + p.lives + ' 条命'; bus.emit('hud'); }
         else gameOver();
         return;
       }
@@ -1005,7 +1010,8 @@ window.Snake = window.Snake || {};
     return out;
   }
   let shakeT = 0;
-  bus.on('crash', () => { if (!matchMedia('(prefers-reduced-motion: reduce)').matches) shakeT = performance.now(); });  // 撞击震屏 ~220ms，尊重系统减弱动态
+  const RM = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };   // 系统「减弱动态」：禁震屏 + 强制降级特效
+  bus.on('crash', () => { if (!RM.matches) shakeT = performance.now(); });  // 撞击震屏 ~220ms，尊重系统减弱动态
   function streak(p, now, hp) { // 冲刺光轨（头点用插值坐标）
     const pts = p.trail.map(s => { const [sx, sy] = K.P(s.x, s.y); return [sx, sy + K.HH - 6, 1 - (now - s.b) / 500]; });
     if (p.sprint) { const [hx, hy] = K.P(hp.x, hp.y); pts.push([hx, hy + K.HH - 6, 1]); }
@@ -1083,7 +1089,8 @@ window.Snake = window.Snake || {};
     const raw = (t - (draw.t || t)) / 1000, dt = Math.min(.05, raw); draw.t = t;
     if (!document.hidden) { // 后台标签页的巨帧不参与性能判定
       S.frameDt = S.frameDt * .95 + Math.min(.2, raw) * .05;
-      if (S.frameDt > K.TUNE.lowFxOn) { S.lowFx = true; S.fxGood = 0; }          // 低端机自动关辉光
+      if (RM.matches) { S.lowFx = true; S.fxGood = 0; }   // 系统「减弱动态」：特效常降级，不走滞回恢复
+      else if (S.frameDt > K.TUNE.lowFxOn) { S.lowFx = true; S.fxGood = 0; }          // 低端机自动关辉光
       else if (S.frameDt < K.TUNE.lowFxOff) { if (S.lowFx && ++S.fxGood >= K.TUNE.lowFxRecover) { S.lowFx = false; S.fxGood = 0; } } // 滞回恢复：卡顿是暂时的
       else S.fxGood = 0;
     }
@@ -1362,8 +1369,9 @@ window.Snake = window.Snake || {};
     });
 
     /* ---------- 震动反馈（移动端）：吃食/撞击/起冲轻震，可一键关闭并持久化 ---------- */
+    const RM = matchMedia('(prefers-reduced-motion: reduce)');   // 系统「减弱动态」：同时禁震动
     let vibOn = K.safeGet('iso-snake-vib', '1') !== '0';
-    const vib = ms => { if (vibOn && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } };
+    const vib = ms => { if (vibOn && !RM.matches && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } };
     const vibBtn = $('vib');
     const vibLabel = () => { vibBtn.textContent = '震动 ' + (vibOn ? '开' : '关'); vibBtn.classList.toggle('off', !vibOn); };
     vibBtn.addEventListener('click', () => {
@@ -1420,6 +1428,22 @@ window.Snake = window.Snake || {};
         .then(ok => toast(ok ? '成绩已复制，去粘贴分享吧' : '复制失败：请截图分享'));
     });
 
+    /* ---------- 读屏播报（#live aria-live）：只播关键节点，不做逐帧刷屏 ---------- */
+    const live = $('live');
+    let sayT = 0;
+    const say = msg => { clearTimeout(sayT); live.textContent = ''; sayT = setTimeout(() => { live.textContent = msg; }, 80); };   // 先清空再置值：同文案也能重播
+    let lastSayScore = 0;
+    bus.on('gameStart', () => { lastSayScore = 0; say('游戏开始'); });
+    bus.on('hud', () => {   // 每 10 分播报一次进度
+      if (K.MODES[S.mode].players === 1 && S.state === 'playing' && S.pl[0] && S.pl[0].score - lastSayScore >= 10) { lastSayScore = S.pl[0].score; say('得分 ' + S.pl[0].score); }
+    });
+    bus.on('goldSpawn', () => say('金苹果出现了'));
+    bus.on('eat', e => { if (e.gold) say('金苹果，加 3 分'); });
+    bus.on('crash', e => { if (e.partial && S.pl[0]) say('撞到了，还剩 ' + S.pl[0].lives + ' 条命'); });
+    bus.on('sprintLock', () => say('冲刺能量耗尽，回充中'));
+    bus.on('lose', () => { if (S.pl[0]) say('游戏结束，得分 ' + S.pl[0].score + '，最高 ' + S.best); });
+    bus.on('win', e => say(e.winner < 0 ? '平局' : K.nm(e.winner) + ' 获胜'));
+
     bus.on('hud', updateHud);
     (function ui() { updateBars(); requestAnimationFrame(ui); })(); // 状态条/罗盘每帧同步
   }
@@ -1436,6 +1460,9 @@ window.Snake = window.Snake || {};
   Snake.Render.boot();
   Snake.api.reset();
   if (new URLSearchParams(location.search).get('autostart') === '1') Snake.api.start(); // ?autostart=1：自动开赛（截图/演示用）
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {   // 离线缓存：仅 http(s) 注册，file:// 双击打开静默跳过
+    addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  }
 })();
 </script>
 </body>

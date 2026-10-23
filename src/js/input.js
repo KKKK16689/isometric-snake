@@ -114,8 +114,9 @@ window.Snake = window.Snake || {};
     });
 
     /* ---------- 震动反馈（移动端）：吃食/撞击/起冲轻震，可一键关闭并持久化 ---------- */
+    const RM = matchMedia('(prefers-reduced-motion: reduce)');   // 系统「减弱动态」：同时禁震动
     let vibOn = K.safeGet('iso-snake-vib', '1') !== '0';
-    const vib = ms => { if (vibOn && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } };
+    const vib = ms => { if (vibOn && !RM.matches && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } };
     const vibBtn = $('vib');
     const vibLabel = () => { vibBtn.textContent = '震动 ' + (vibOn ? '开' : '关'); vibBtn.classList.toggle('off', !vibOn); };
     vibBtn.addEventListener('click', () => {
@@ -171,6 +172,22 @@ window.Snake = window.Snake || {};
       copyText(S.state === 'over' && S.resultText ? S.resultText : live)
         .then(ok => toast(ok ? '成绩已复制，去粘贴分享吧' : '复制失败：请截图分享'));
     });
+
+    /* ---------- 读屏播报（#live aria-live）：只播关键节点，不做逐帧刷屏 ---------- */
+    const live = $('live');
+    let sayT = 0;
+    const say = msg => { clearTimeout(sayT); live.textContent = ''; sayT = setTimeout(() => { live.textContent = msg; }, 80); };   // 先清空再置值：同文案也能重播
+    let lastSayScore = 0;
+    bus.on('gameStart', () => { lastSayScore = 0; say('游戏开始'); });
+    bus.on('hud', () => {   // 每 10 分播报一次进度
+      if (K.MODES[S.mode].players === 1 && S.state === 'playing' && S.pl[0] && S.pl[0].score - lastSayScore >= 10) { lastSayScore = S.pl[0].score; say('得分 ' + S.pl[0].score); }
+    });
+    bus.on('goldSpawn', () => say('金苹果出现了'));
+    bus.on('eat', e => { if (e.gold) say('金苹果，加 3 分'); });
+    bus.on('crash', e => { if (e.partial && S.pl[0]) say('撞到了，还剩 ' + S.pl[0].lives + ' 条命'); });
+    bus.on('sprintLock', () => say('冲刺能量耗尽，回充中'));
+    bus.on('lose', () => { if (S.pl[0]) say('游戏结束，得分 ' + S.pl[0].score + '，最高 ' + S.best); });
+    bus.on('win', e => say(e.winner < 0 ? '平局' : K.nm(e.winner) + ' 获胜'));
 
     bus.on('hud', updateHud);
     (function ui() { updateBars(); requestAnimationFrame(ui); })(); // 状态条/罗盘每帧同步
