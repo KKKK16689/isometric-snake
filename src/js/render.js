@@ -109,7 +109,8 @@ window.Snake = window.Snake || {};
     return out;
   }
   let shakeT = 0;
-  bus.on('crash', () => { if (!matchMedia('(prefers-reduced-motion: reduce)').matches) shakeT = performance.now(); });  // 撞击震屏 ~220ms，尊重系统减弱动态
+  const RM = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };   // 系统「减弱动态」：禁震屏 + 强制降级特效
+  bus.on('crash', () => { if (!RM.matches) shakeT = performance.now(); });  // 撞击震屏 ~220ms，尊重系统减弱动态
   function streak(p, now, hp) { // 冲刺光轨（头点用插值坐标）
     const pts = p.trail.map(s => { const [sx, sy] = K.P(s.x, s.y); return [sx, sy + K.HH - 6, 1 - (now - s.b) / 500]; });
     if (p.sprint) { const [hx, hy] = K.P(hp.x, hp.y); pts.push([hx, hy + K.HH - 6, 1]); }
@@ -187,7 +188,8 @@ window.Snake = window.Snake || {};
     const raw = (t - (draw.t || t)) / 1000, dt = Math.min(.05, raw); draw.t = t;
     if (!document.hidden) { // 后台标签页的巨帧不参与性能判定
       S.frameDt = S.frameDt * .95 + Math.min(.2, raw) * .05;
-      if (S.frameDt > K.TUNE.lowFxOn) { S.lowFx = true; S.fxGood = 0; }          // 低端机自动关辉光
+      if (RM.matches) { S.lowFx = true; S.fxGood = 0; }   // 系统「减弱动态」：特效常降级，不走滞回恢复
+      else if (S.frameDt > K.TUNE.lowFxOn) { S.lowFx = true; S.fxGood = 0; }          // 低端机自动关辉光
       else if (S.frameDt < K.TUNE.lowFxOff) { if (S.lowFx && ++S.fxGood >= K.TUNE.lowFxRecover) { S.lowFx = false; S.fxGood = 0; } } // 滞回恢复：卡顿是暂时的
       else S.fxGood = 0;
     }

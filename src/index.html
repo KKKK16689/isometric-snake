@@ -20,7 +20,9 @@
 <meta property="og:image:alt" content="霓虹夜主题下的等距贪吃蛇棋盘">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://kkkk16689.github.io/isometric-snake/">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <title>等距贪吃蛇</title>
 <link rel="stylesheet" href="css/base.css">
 </head>
@@ -71,6 +73,7 @@
 <div class="rotate">请把手机横过来，开始对战</div>
 <div class="hint" id="hint">像 App 一样全屏打开：<br>iPhone：Safari 点分享，再点“添加到主屏幕”<br>安卓：浏览器菜单里选“添加到主屏幕”或“安装应用”<br><span>点这里关闭</span></div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="live" class="sr-only" aria-live="polite"></div>
 <p class="tip">方向键对应屏幕方向，空格暂停。按住 Shift、E 或 Enter 冲刺，手机按住「冲」键冲刺，也可在棋盘上滑动转向。罗盘里箭头是蛇的朝向，橙点指向最近的食物。简单模式有 3 条命。</p>
 </main>
 <script src="js/core.js"></script>
@@ -91,6 +94,9 @@
   Snake.Render.boot();
   Snake.api.reset();
   if (new URLSearchParams(location.search).get('autostart') === '1') Snake.api.start(); // ?autostart=1：自动开赛（截图/演示用）
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {   // 离线缓存：仅 http(s) 注册，file:// 双击打开静默跳过
+    addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  }
 })();
 </script>
 </body>
