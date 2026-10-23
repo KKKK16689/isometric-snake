@@ -1,4 +1,6 @@
-# 自动构建：只要 src/ 或 build.js 有改动，CI 就跑 build.js 并把生成的 index.html 提交回 main
+# 自动构建 + 测试：
+#   pull_request → 跑无头测试 + 打包 + 校验产物与 src 一致（不提交）
+#   push main    → 跑测试 + 打包，产物有变化时由 bot 提交回仓库
 name: build
 
 on:
@@ -8,10 +10,15 @@ on:
       - 'src/**'
       - 'build.js'
       - 'package.json'
+      - 'test/**'
+      - 'tools/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch: # 也可在仓库 Actions 页面手动点 Run workflow
 
 permissions:
-  contents: write # 需要把构建产物提交回仓库
+  contents: write # 需要把构建产物提交回仓库（仅 main push 真正提交）
 
 jobs:
   build:
@@ -21,9 +28,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: 无头逻辑测试
+        run: npm test
       - name: 打包单文件
         run: node build.js
-      - name: 产物有变化才提交
+      - name: 产物漂移检查（index.html 必须与 src 同步）
+        if: github.event_name == 'pull_request'
+        run: git diff --exit-code index.html
+      - name: 产物有变化才提交（仅 main）
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           if git diff --quiet; then
             echo "index.html 无变化，跳过提交"

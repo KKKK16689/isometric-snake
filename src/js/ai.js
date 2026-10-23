@@ -1,4 +1,4 @@
-﻿/* ai.js —— 敌方蛇控制决策（洪水填充 + 危险回避）。原样迁移，不改算法。 */
+/* ai.js —— 敌方蛇控制决策（洪水填充 + 危险回避）。原样迁移，不改算法。 */
 window.Snake = window.Snake || {};
 (function () {
   'use strict';
@@ -48,5 +48,5 @@ window.Snake = window.Snake || {};
       e.currentTarget.blur();
     });
   }
-  Snake.Ai = { init };
+  Snake.Ai = { init, think, setLevel: v => { aiLevel = Math.min(AI_LV.length - 1, Math.max(0, v | 0)); }, levels: AI_LV.map(l => l.name) };   // think/setLevel 导出：无头测试可绕过 DOM 直接驱动
 })();
