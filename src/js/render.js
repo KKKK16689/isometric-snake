@@ -10,6 +10,8 @@ window.Snake = window.Snake || {};
   let vig = null;                        // 背景晕影渐变缓存（resize/换主题时重建）
   let pal = Snake.theme.current.canvas;  // 当前主题渲染调色板（只读）
   let foodC = K.shades(pal.food);        // 食物立方体三面色（随主题）
+  const GHOST_C = ['#F0F2F5', '#C3C9D4', '#98A0AE'];   // 幽灵回放蛇（半透明灰白，不随主题）
+  const GOLD = K.shades('#F2B33D');                    // 金苹果三面色（固定金色）
   function bindTheme() {
     pal = Snake.theme.current.canvas;
     foodC = K.shades(pal.food);
@@ -168,11 +170,12 @@ window.Snake = window.Snake || {};
     }
     if (p.sprint) lightning(p, cx, cy, t, i, pts);
   }
-  function overlay(t1, t2) {
+  function overlay(t1, t2, t3) {
     ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(0, 0, S.W, S.H);
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
     ctx.font = '600 22px system-ui,sans-serif'; ctx.fillText(t1, S.W / 2, S.H / 2 - 4);
     ctx.font = '14px system-ui,sans-serif'; ctx.fillText(t2, S.W / 2, S.H / 2 + 20);
+    if (t3) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = '12px system-ui,sans-serif'; ctx.fillText(t3, S.W / 2, S.H / 2 + 42); }
   }
   function draw(t) {
     ctx.clearRect(0, 0, S.W, S.H);
@@ -205,13 +208,41 @@ window.Snake = window.Snake || {};
       streak(p, now, arr[0]);
     });
     S.foods.forEach(f => { const [sx, sy] = K.P(f.x, f.y); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); });
+    if (S.gold) { const [sx, sy] = K.P(S.gold.x, S.gold.y); diamond(sx, sy + K.HH, K.HW * 1.8, K.HH * 1.8, 'rgba(242,179,61,.22)'); }   // 金苹果地板光
     ctx.globalCompositeOperation = 'source-over';
+    /* 幽灵回放：半透明灰白蛇，按当前步数逐格推进（数据 = 破纪录局存档的 p0 路径） */
+    if (S.ghostOn && S.ghost && S.pl[0] && S.state !== 'over') {
+      const total = S.ghost.length >> 1, upto = Math.min(S.myMoves, total);
+      if (upto > 0) {
+        const len = Math.min(upto, S.pl[0].body.length);
+        ctx.globalAlpha = .22;
+        for (let j = 0; j < len; j++) {
+          const k = upto - 1 - j;
+          cube(S.ghost[k * 2], S.ghost[k * 2 + 1], .85 - .25 * (j / len), 7, 0, j === 0 ? ['#FFFFFF', GHOST_C[1], GHOST_C[2]] : GHOST_C);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
     const items = [];
     S.pl.forEach((p, i) => PTS[i].forEach((s, j) => items.push({ x: s.x, y: s.y, i, j, n: p.body.length, head: j === 0, dead: p.dead })));
     S.foods.forEach(f => items.push({ x: f.x, y: f.y, food: true }));
+    if (S.gold) items.push({ x: S.gold.x, y: S.gold.y, gold: true });
     items.sort((a, b) => (a.x + a.y) - (b.x + b.y)); // 画家算法：后 → 前
     for (const o of items) {
-      if (o.food) {
+      if (o.gold) {   // 金苹果：金色立方 + 大光晕，最后 2s 闪烁告警（游戏时钟，暂停不闪走）
+        const remaining = K.TUNE.goldTtl - (S.last - S.gold.born);
+        const [sx, sy] = K.P(o.x, o.y);
+        ctx.globalAlpha = remaining < 2000 && Math.floor(remaining / 150) % 2 === 0 ? .3 : 1;
+        diamond(sx, sy + K.HH, K.HW * .55, K.HH * .55, 'rgba(0,0,0,.25)');
+        if (!S.lowFx) {
+          const r0 = 18 + Math.sin(t / 200) * 5;
+          const gg = ctx.createRadialGradient(sx, sy + K.HH, 2, sx, sy + K.HH, r0);
+          gg.addColorStop(0, 'rgba(242,179,61,.55)'); gg.addColorStop(1, 'rgba(242,179,61,0)');
+          ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(sx, sy + K.HH, r0, 0, 6.283); ctx.fill();
+        }
+        cube(o.x, o.y, .62, 9, 3 + Math.sin(t / 220) * 3, GOLD, '#F2B33D');
+        ctx.globalAlpha = 1;
+      } else if (o.food) {
         const [sx, sy] = K.P(o.x, o.y);
         diamond(sx, sy + K.HH, K.HW * .5, K.HH * .5, 'rgba(0,0,0,.25)');
         if (!S.lowFx) { // 食物常驻光晕：径向渐变呼吸（非粒子，直接绘制）
@@ -240,9 +271,15 @@ window.Snake = window.Snake || {};
       ctx.fillStyle = '#fff'; ctx.font = '600 11px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.fillText(K.nm(i), sx, sy - 15);
     });
     if (sh > 0) ctx.restore();
-    if (S.state === 'ready') overlay(pk ? (K.MODES[S.mode].ai ? '人机对战' : '双人对战') : '等距贪吃蛇', pk ? (K.MODES[S.mode].ai ? 'WASD 或方向键 · E/Shift 冲刺 · 点击开始' : 'P1 WASD·E 冲刺   P2 方向键·Enter 冲刺') : '点击画面或按方向键开始');
+    const statsLine = (S.daily ? '种子 ' + S.seed + ' · ' : '') + '累计 ' + S.stats.games + ' 局 · ' + S.stats.food + ' 食物 · ' + S.stats.gold + ' 金苹果';   // 结算第三行
+    if (S.state === 'ready') overlay(
+      S.daily ? '每日挑战 · ' + (K.dateStr(S.seed) || ('种子 ' + S.seed)) : pk ? (K.MODES[S.mode].ai ? '人机对战' : '双人对战') : '等距贪吃蛇',
+      pk ? (K.MODES[S.mode].ai ? 'WASD 或方向键 · E/Shift 冲刺 · 点击开始' : 'P1 WASD·E 冲刺   P2 方向键·Enter 冲刺') : S.daily ? '同一种子 · 同一局 · 按方向键开始' : '点击画面或按方向键开始');
     else if (S.state === 'paused') overlay(S.msg || '已暂停', '点击画面或按空格继续');
-    else if (S.state === 'over') overlay(S.msg || (pk ? (S.winner < 0 ? '平局' : K.MODES[S.mode].ai ? (S.winner ? 'AI 获胜' : '你赢了') : 'P' + (S.winner + 1) + ' 获胜') : '游戏结束 · ' + S.pl[0].score + ' 分'), '点击画面重新开始');
+    else if (S.state === 'over') overlay(
+      S.msg || (pk ? (S.winner < 0 ? '平局' : K.MODES[S.mode].ai ? (S.winner ? 'AI 获胜' : '你赢了') : 'P' + (S.winner + 1) + ' 获胜') : '游戏结束 · ' + S.pl[0].score + ' 分'),
+      '点击画面重新开始' + (S.daily ? ' · 工具栏可复制成绩' : ''),
+      statsLine);
   }
   function frame(t) {
     api.update(t);                       // core 追赶式 tick

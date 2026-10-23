@@ -1,4 +1,4 @@
-﻿/* particles.js —— 固定容量对象池粒子（容量 256，超限覆盖最旧，零 GC 压力）
+/* particles.js —— 固定容量对象池粒子（容量 256，超限覆盖最旧，零 GC 压力）
    只听 bus 事件出特效，不改游戏状态；绘制由 render 每帧调用。 */
 window.Snake = window.Snake || {};
 (function () {
@@ -24,9 +24,14 @@ window.Snake = window.Snake || {};
     }
   }
   /* ---------- 事件 → 效果（lowFx 降级表见 spec §2.2） ---------- */
-  bus.on('eat', e => { // 吃食爆炸：food+spark 色；lowFx 减半
+  bus.on('eat', e => { // 吃食爆炸：food+spark 色；金苹果金色大爆；lowFx 减半
     const c = pal(), [cx, cy] = at(e.x, e.y);
+    if (e.gold) { scatter(cx, cy, S.lowFx ? 10 : 22, ['#F2B33D', '#F7D070', '#BA7517', '#ffffff'], 90, 80); return; }
     scatter(cx, cy, S.lowFx ? 6 : 12, e.pk ? ['#ffffff', '#cbd5e1', '#94a3b8'] : [c.food, K.shades(c.food)[0], c.spark], 60, 55);
+  });
+  bus.on('goldSpawn', e => { // 金苹果登场微光
+    const [cx, cy] = at(e.x, e.y);
+    scatter(cx, cy, S.lowFx ? 3 : 7, ['#F2B33D', '#F7D070'], 30, 35);
   });
   bus.on('crash', e => { // 撞击火花：lowFx 减半
     const c = pal(), cols = [c.spark, '#ffffff', K.shades(c.spark)[2]];

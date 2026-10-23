@@ -127,6 +127,51 @@ window.Snake = window.Snake || {};
     bus.on('crash', () => vib(50));
     bus.on('sprintOn', () => vib(5));
 
+    /* ---------- 轻提示 toast ---------- */
+    const toastEl = $('toast');
+    let toastTimer = 0;
+    const toast = msg => {
+      toastEl.textContent = msg; toastEl.classList.add('show');
+      clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+    };
+
+    /* ---------- 每日挑战 / 幽灵回放 / 复制成绩 ---------- */
+    $('daily').addEventListener('click', e => {
+      e.currentTarget.blur();
+      api.startDaily();                    // 今日种子（YYYYMMDD），固定普通模式
+      syncModeUi();                        // 模式按钮高亮同步回「普通」
+      toast('每日挑战 · 种子 ' + S.seed + ' · 和全世界同一局');
+    });
+    const ghostBtn = $('ghost');
+    const ghostLabel = () => { ghostBtn.textContent = '幽灵 ' + (S.ghostOn ? '开' : '关'); ghostBtn.classList.toggle('off', !S.ghostOn); };
+    ghostBtn.addEventListener('click', () => {
+      ghostBtn.blur();
+      if (!S.ghostOn && !S.ghost) { toast('还没有幽灵数据：破纪录时自动保存你的路径'); return; }
+      api.setGhostOn(!S.ghostOn); ghostLabel();
+      if (S.ghostOn) toast('幽灵 = 你破纪录的那局' + (S.ghostMeta ? '（' + S.ghostMeta.score + ' 分 · ' + S.ghostMeta.date + '）' : ''));
+    });
+    ghostLabel();
+    function fallbackCopy(txt) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta); return ok;
+      } catch (e) { return false; }
+    }
+    function copyText(txt) {
+      if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(txt).then(() => true, () => fallbackCopy(txt));
+      return Promise.resolve(fallbackCopy(txt));
+    }
+    $('copy').addEventListener('click', e => {
+      e.currentTarget.blur();
+      const home = 'https://kkkk16689.github.io/isometric-snake/';
+      const live = '等距贪吃蛇 2.0 · ' + (S.daily ? '每日挑战 种子 ' + S.seed : K.MODE_NAME[S.mode]) + '（进行中，得分 ' + (S.pl[0] ? S.pl[0].score : 0) + '）。来战：' + home + (S.daily ? '?daily=1' : '');
+      copyText(S.state === 'over' && S.resultText ? S.resultText : live)
+        .then(ok => toast(ok ? '成绩已复制，去粘贴分享吧' : '复制失败：请截图分享'));
+    });
+
     bus.on('hud', updateHud);
     (function ui() { updateBars(); requestAnimationFrame(ui); })(); // 状态条/罗盘每帧同步
   }
