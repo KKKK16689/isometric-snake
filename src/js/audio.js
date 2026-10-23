@@ -171,7 +171,7 @@ window.Snake = window.Snake || {};
     soundOn = K.safeGet('snake.snd', '1') !== '0';
     musicOn = K.safeGet('snake.music', '0') === '1';
     const snd = document.getElementById('snd'), mus = document.getElementById('mus');
-    const label = (b, on, t) => { b.textContent = t + ' ' + (on ? '开' : '关'); };
+    const label = (b, on, t) => { b.textContent = t; b.classList.toggle('off', !on); b.title = t + '：' + (on ? '开' : '关'); };   // 短文案省宽度，开关态用 .off 置灰 + title
     label(snd, soundOn, '音效'); label(mus, musicOn, '音乐');
     snd.addEventListener('click', e => {
       soundOn = !soundOn; K.safeSet('snake.snd', soundOn ? '1' : '0'); label(snd, soundOn, '音效'); snd.blur();

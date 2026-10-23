@@ -127,7 +127,7 @@ window.Snake = window.Snake || {};
     let vibOn = K.safeGet('iso-snake-vib', '1') !== '0';
     const vib = ms => { if (vibOn && !RM.matches && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } };
     const vibBtn = $('vib');
-    const vibLabel = () => { vibBtn.textContent = '震动 ' + (vibOn ? '开' : '关'); vibBtn.classList.toggle('off', !vibOn); };
+    const vibLabel = () => { vibBtn.textContent = '震动'; vibBtn.classList.toggle('off', !vibOn); vibBtn.title = '震动反馈：' + (vibOn ? '开' : '关'); };
     vibBtn.addEventListener('click', () => {
       vibBtn.blur(); vibOn = !vibOn; K.safeSet('iso-snake-vib', vibOn ? '1' : '0'); vibLabel();
       if (vibOn) vib(12);                                  // 开启时震一下作确认
@@ -153,7 +153,7 @@ window.Snake = window.Snake || {};
       toast('每日挑战 · 种子 ' + S.seed + ' · 和全世界同一局');
     });
     const ghostBtn = $('ghost');
-    const ghostLabel = () => { ghostBtn.textContent = '幽灵 ' + (S.ghostOn ? '开' : '关'); ghostBtn.classList.toggle('off', !S.ghostOn); };
+    const ghostLabel = () => { ghostBtn.textContent = '幽灵'; ghostBtn.classList.toggle('off', !S.ghostOn); ghostBtn.title = '幽灵回放：' + (S.ghostOn ? '开' : '关'); };
     ghostBtn.addEventListener('click', () => {
       ghostBtn.blur();
       if (!S.ghostOn && !S.ghost) { toast('还没有幽灵数据：破纪录时自动保存你的路径'); return; }

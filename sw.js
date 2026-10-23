@@ -1,7 +1,7 @@
 /* sw.js —— 离线缓存（stale-while-revalidate）
    版本化缓存名：新版本激活时删掉所有旧缓存；首访预缓存外壳，其余同源 GET 命中即回、后台刷新。
    注册入口在 src/index.html 的 boot 段（仅 http(s) 协议注册，file:// 双击打开静默跳过）。 */
-const CACHE = 'iso-snake-v2.0.0';
+const CACHE = 'iso-snake-v2.0.1';   // UI 布局修复：版本+1 让老客户端整缓存重建
 const PRECACHE = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

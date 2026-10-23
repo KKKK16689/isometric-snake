@@ -213,12 +213,13 @@ test('集成：启动 + 键盘开局 + 确定性吃食 + 连击 HUD + 震动', (
 
 test('集成：UI 按钮全点一遍（音效/音乐/震动/全屏/提示/AI 档/模式/每日/幽灵/复制）', () => {
   const H = makeDom(); boot(H);
-  H.clickEl(H.byId.snd); assert.equal(H.byId.snd.textContent, '音效 关');
-  H.clickEl(H.byId.snd); assert.equal(H.byId.snd.textContent, '音效 开');
-  H.clickEl(H.byId.mus); assert.equal(H.byId.mus.textContent, '音乐 开');
+  H.clickEl(H.byId.snd); assert.equal(H.byId.snd.textContent, '音效');
+  assert.ok(H.byId.snd.classList.contains('off'), '音效关闭后应置灰'); assert.equal(H.byId.snd.title, '音效：关');
+  H.clickEl(H.byId.snd); assert.ok(!H.byId.snd.classList.contains('off'), '音效开启后应恢复');
+  H.clickEl(H.byId.mus); assert.ok(!H.byId.mus.classList.contains('off'));
   H.drive(20);
-  H.clickEl(H.byId.mus); assert.equal(H.byId.mus.textContent, '音乐 关');
-  H.clickEl(H.byId.vib); assert.equal(H.byId.vib.textContent, '震动 关');
+  H.clickEl(H.byId.mus); assert.ok(H.byId.mus.classList.contains('off'));
+  H.clickEl(H.byId.vib); assert.ok(H.byId.vib.classList.contains('off'), '震动关闭后应置灰');
   assert.equal(H.store.get('iso-snake-vib'), '0');
   H.clickEl(H.byId.vib); assert.ok(H.vibes.includes(12), '开启震动未确认反馈');
   H.clickEl(H.byId.fs);                          // 无 requestFullscreen → 弹主屏提示
