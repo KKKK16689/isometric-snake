@@ -135,6 +135,7 @@ window.Snake = window.Snake || {};
     const taken = new Set();
     S.pl.forEach(p => p.body.forEach(s => taken.add(s.x * 1024 + s.y)));
     S.foods.forEach(f => taken.add(f.x * 1024 + f.y));
+    if (S.gold) taken.add(S.gold.x * 1024 + S.gold.y);   // 金苹果占位：补充食物不得与其重叠
     const free = [];
     for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) if (!taken.has(x * 1024 + y)) free.push({ x, y });
     while (S.foods.length < want) {
@@ -177,8 +178,9 @@ window.Snake = window.Snake || {};
                   moveT: 0, moveP: 300, grew: false, tailFrom: null, streakAt: 0 };  // moveT/moveP：渲染插值时钟；grew/tailFrom：尾格来源
       spawn(i, p); return p;
     });
+    S.gold = null; S.rec = []; S.myMoves = 0;   // 内容态复位须在 fillFoods 前：金苹果占位参与空格取样，否则重开随机流与全新实例错位
     S.foods = []; fillFoods(); S.state = 'ready'; S.msg = ''; S.winner = -1;
-    S.gold = null; S.rec = []; S.myMoves = 0; loadGhost();   // 幽灵存档随新一局重载
+    loadGhost();   // 幽灵存档随新一局重载
     bus.emit('hud'); bus.emit('gameStart');
   }
   function turn(p, d) {
