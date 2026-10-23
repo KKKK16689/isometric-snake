@@ -76,6 +76,22 @@ test('吃食：增长 + 计分 + 窗口内连击额外 +1', () => {
   assert.equal(p.streak, 2);
 });
 
+test('连击窗口过期：超 6s 未进食，连击归零且不再加分', () => {
+  const sb = load(); const { Snake } = sb;
+  Snake.api.setMode('normal'); Snake.api.start();
+  const S = Snake.S, p = S.pl[0];
+  let lastEat = null; Snake.bus.on('eat', e => { lastEat = e; });   // S 不存 eat 明细，从总线捕获
+  S.foods[0] = ahead(p); moveOnce(sb, p);                     // 第 1 个：+1，streak=1
+  assert.equal(p.score, 1);
+  p.streakAt -= 7000;                                         // 时钟回拨 7s ≡ 超过 6s 窗口（确定性）
+  stepOnce(sb);                                               // step 顶部做连击衰减
+  assert.equal(p.streak, 0, 'streak should decay after window');
+  S.foods[0] = ahead(p); moveOnce(sb, p);                     // 窗口外再吃
+  assert.equal(p.streak, 1);
+  assert.equal(lastEat.pts, 1, 'no combo bonus after window');
+  assert.equal(p.score, 2);                                   // 1 + 1（无连击加成）
+});
+
 test('简单模式撞墙：扣一条命、重生并暂停提示', () => {
   const sb = load(); const { Snake } = sb;
   Snake.api.setMode('easy'); Snake.api.start();
