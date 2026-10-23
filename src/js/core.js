@@ -38,7 +38,8 @@ window.Snake = window.Snake || {};
     },
     /* 集中调参表：散在各模块的魔法数收拢于此（平衡性迭代 / 文档 / 测试共用） */
     TUNE: {
-      lowFxOn: .032, lowFxOff: .020, lowFxRecover: 120  // render 帧耗时 EMA：超过 on 降级，低于 off 连续 recover 帧恢复
+      lowFxOn: .032, lowFxOff: .020, lowFxRecover: 120,  // render 帧耗时 EMA：超过 on 降级，低于 off 连续 recover 帧恢复
+      comboWindow: 6000, comboBonus: 1                   // 连击：6s 内持续吃食，第 2 个起每个额外 +1（×2 封顶）
     }
   };
 
@@ -83,12 +84,13 @@ window.Snake = window.Snake || {};
     S.N = n; S.W = n * K.TW + 20; S.H = n * K.TH + K.OY + 12; S.OX = S.W / 2;
     bus.emit('resize', { n });           // render 监听并同步 canvas 尺寸
   }
-  const bestKey = () => 'iso-snake-best-' + S.mode;
+  const bestKey = () => 'iso-snake-best2-' + S.mode;   // 连击计分为新榜（旧 best 键保留不迁移，两榜独立）
   function loadBest() { S.best = +safeGet(bestKey(), 0) || 0; }
   function spawn(i, p) {
     const two = K.MODES[S.mode].players === 2;
     const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
     p.body = xs.map(x => ({ x, y })); p.dir = i ? K.DIRS.upLeft : K.DIRS.downRight; p.queue = []; p.dead = false;
+    p.moveT = 0; p.moveP = 300; p.grew = false; p.tailFrom = null; p.streakAt = 0;  // 插值/连击时钟复位
   }
   function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
     const want = K.MODES[S.mode].foods;
@@ -120,7 +122,8 @@ window.Snake = window.Snake || {};
     const m = K.MODES[S.mode]; setSize(m.n);
     S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
     S.pl = [...Array(m.players)].map((_, i) => {
-      const p = { score: 0, lives: m.lives, energy: 100, locked: false, hold: false, sprint: false, trail: [], streak: 0, ai: !!m.ai && i === 1 };
+      const p = { score: 0, lives: m.lives, energy: 100, locked: false, hold: false, sprint: false, trail: [], streak: 0, ai: !!m.ai && i === 1,
+                  moveT: 0, moveP: 300, grew: false, tailFrom: null, streakAt: 0 };  // moveT/moveP：渲染插值时钟；grew/tailFrom：尾格来源
       spawn(i, p); return p;
     });
     S.foods = []; fillFoods(); S.state = 'ready'; S.msg = ''; S.winner = -1;
@@ -139,8 +142,9 @@ window.Snake = window.Snake || {};
     if (same(c1) || same(c2)) return;
     turn(p, same([-c1[0], -c1[1]]) ? c2 : c1);
   }
-  function step() {
+  function step(now) {   // now = 游戏时钟（S.last），与 rAF 的 t 同基准，供插值/连击
     S.tickN++;
+    S.pl.forEach(p => { if (p.streak > 0 && now - p.streakAt > K.TUNE.comboWindow) p.streak = 0; });   // 连击超时衰减
     S.pl.forEach((p, i) => { if (p.ai && !p.dead && Snake.hooks.think) Snake.hooks.think(p, i); });
     const dt = tickMs() / 1000;
     S.pl.forEach((p, i) => {   // 冲刺耗能 / 恢复；能量归零锁定到 30
@@ -174,8 +178,15 @@ window.Snake = window.Snake || {};
       if (!hs[i]) return;
       if (p.sprint) { p.trail.push({ x: p.body[0].x, y: p.body[0].y, b: performance.now() }); if (p.trail.length > 14) p.trail.shift(); }
       p.body.unshift(hs[i]);
-      if (eat[i] >= 0) { p.score++; p.streak++; bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, i }); }
-      else p.body.pop();
+      if (eat[i] >= 0) {
+        if (now - p.streakAt > K.TUNE.comboWindow) p.streak = 0;
+        p.streak++; p.streakAt = now;
+        const gain = 1 + (p.streak >= 2 ? K.TUNE.comboBonus : 0);   // 连击中每个食物 +2（×2 封顶）
+        p.score += gain;
+        bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, pts: gain, i });
+      }
+      else p.tailFrom = p.body.pop();
+      p.grew = eat[i] >= 0; p.moveT = now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick
     });
     const eaten = new Set(eat.filter(k => k >= 0));
     S.foods = S.foods.filter((_, k) => !eaten.has(k)); fillFoods();
@@ -211,7 +222,7 @@ window.Snake = window.Snake || {};
   function update(t) {
     if (S.state === 'playing') {
       let n = 0;
-      while (S.state === 'playing' && t - S.last >= tickMs() && n++ < 3) { S.last += tickMs(); step(); }
+      while (S.state === 'playing' && t - S.last >= tickMs() && n++ < 3) { S.last += tickMs(); step(S.last); }
       if (t - S.last > 400) S.last = t;
     }
   }

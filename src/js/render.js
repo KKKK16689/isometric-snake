@@ -96,9 +96,21 @@ window.Snake = window.Snake || {};
     diamond(sx, sy + K.HH - hgt, K.HW * 1.7, K.HH * 1.7, K.rgba(col, .05));
     ctx.globalCompositeOperation = 'source-over';
   }
-  function streak(p, now) { // 冲刺光轨
+  /* ---------- 移动插值：core 记录 p.moveT/moveP（游戏时钟），这里按帧时刻在“上一格→当前格”间线性插值 ---------- */
+  const PTS = [[], []];                                   // 每玩家浮点格坐标缓存（逐帧复用，零分配）
+  function segPos(p, j, t, out) {
+    const cur = p.body[j], a = p.moveP ? (t - p.moveT) / p.moveP : 1;
+    if (a > 0 && a < 1) { // 中段身体来自 body[j+1]；尾段：生长帧原地，否则来自让出的旧尾格
+      const from = j < p.body.length - 1 ? p.body[j + 1] : (p.grew ? cur : (p.tailFrom || cur));
+      out.x = from.x + (cur.x - from.x) * a; out.y = from.y + (cur.y - from.y) * a;
+    } else { out.x = cur.x; out.y = cur.y; }              // a≥1（未动/暂停/结束）停稳在当前格
+    return out;
+  }
+  let shakeT = 0;
+  bus.on('crash', () => { if (!matchMedia('(prefers-reduced-motion: reduce)').matches) shakeT = performance.now(); });  // 撞击震屏 ~220ms，尊重系统减弱动态
+  function streak(p, now, hp) { // 冲刺光轨（头点用插值坐标）
     const pts = p.trail.map(s => { const [sx, sy] = K.P(s.x, s.y); return [sx, sy + K.HH - 6, 1 - (now - s.b) / 500]; });
-    if (p.sprint) { const [hx, hy] = K.P(p.body[0].x, p.body[0].y); pts.push([hx, hy + K.HH - 6, 1]); }
+    if (p.sprint) { const [hx, hy] = K.P(hp.x, hp.y); pts.push([hx, hy + K.HH - 6, 1]); }
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     [[11, .14], [5, .35], [1.8, .9]].forEach(([w, a], k) => {
       for (let i = 1; i < pts.length; i++) {
@@ -117,27 +129,28 @@ window.Snake = window.Snake || {};
       pts.forEach((q, n) => n ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke();
     });
   }
-  function lightning(p, cx, cy, t, i) { // 头部闪电 + 沿身电弧（约 18 次/秒换种子）
+  function lightning(p, cx, cy, t, i, pts) { // 头部闪电 + 沿身电弧（约 18 次/秒换种子；弧端点用插值坐标）
     const seed = Math.floor(t / 55) * 7 + i * 101, n = p.body.length;
     ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (let b = 0; b < 3; b++) { const ang = K.fr(seed + b * 13) * 6.283, len = 24 + K.fr(seed + b * 29) * 24; zig(cx, cy, cx + Math.cos(ang) * len, cy + Math.sin(ang) * len * .6, seed + b * 7); }
     for (let k = 0; k < (S.lowFx ? 0 : 2); k++) {
-      const j = Math.floor(K.fr(seed + k * 17) * Math.max(1, n - 2)), a = K.P(p.body[j].x, p.body[j].y), c = K.P(p.body[Math.min(j + 2, n - 1)].x, p.body[Math.min(j + 2, n - 1)].y);
+      const j = Math.floor(K.fr(seed + k * 17) * Math.max(1, n - 2)), e = pts[Math.min(j + 2, n - 1)], a = K.P(pts[j].x, pts[j].y), c = K.P(e.x, e.y);
       zig(a[0], a[1] + K.HH - 8, c[0], c[1] + K.HH - 8, seed + k * 3);
     }
     ctx.globalCompositeOperation = 'source-over';
   }
-  function seam(p, j, x, y, s, hgt, col) { // 鳞片人字缝，指向蛇头
+  function seam(p, j, x, y, s, hgt, col) { // 鳞片人字缝，指向蛇头（x,y 为插值浮点格；方向仍取整数格）
     const q = p.body[j - 1]; if (!q) return;
-    const dx = q.x - x, dy = q.y - y; if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+    const c0 = p.body[j];
+    const dx = q.x - c0.x, dy = q.y - c0.y; if (Math.abs(dx) + Math.abs(dy) !== 1) return;
     const [sx, sy] = K.P(x, y), cx = sx, cy = sy + K.HH - hgt;
     const v = [(dx - dy) * K.HW * s, (dx + dy) * K.HH * s], w = [(-dy - dx) * K.HW * s, (-dy + dx) * K.HH * s];
     ctx.strokeStyle = col; ctx.lineWidth = 1.3; ctx.beginPath();
     ctx.moveTo(cx + w[0] * .5 - v[0] * .1, cy + w[1] * .5 - v[1] * .1); ctx.lineTo(cx + v[0] * .35, cy + v[1] * .35); ctx.lineTo(cx - w[0] * .5 - v[0] * .1, cy - w[1] * .5 - v[1] * .1);
     ctx.stroke();
   }
-  function headFx(p, t, i) { // 眼睛、吐舌、冲刺闪电
-    const h = p.body[0], [sx, sy] = K.P(h.x, h.y), cx = sx, cy = sy + K.HH - 9, dx = p.dir[0], dy = p.dir[1];
+  function headFx(p, t, i, hp, pts) { // 眼睛、吐舌、冲刺闪电（头位置用插值坐标）
+    const [sx, sy] = K.P(hp.x, hp.y), cx = sx, cy = sy + K.HH - 9, dx = p.dir[0], dy = p.dir[1];
     const v = [(dx - dy) * K.HW, (dx + dy) * K.HH], w = [(-dy - dx) * K.HW, (-dy + dx) * K.HH];
     if (!p.dead) {
       [-1, 1].forEach(sg => {
@@ -153,7 +166,7 @@ window.Snake = window.Snake || {};
         ctx.moveTo(ex, ey); ctx.lineTo(ex + v[0] * .12 - w[0] * .14, ey + v[1] * .12 - w[1] * .14); ctx.stroke();
       }
     }
-    if (p.sprint) lightning(p, cx, cy, t, i);
+    if (p.sprint) lightning(p, cx, cy, t, i, pts);
   }
   function overlay(t1, t2) {
     ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(0, 0, S.W, S.H);
@@ -168,7 +181,6 @@ window.Snake = window.Snake || {};
       ctx.fillRect(s[0] * S.W, s[1] * S.H, s[2], s[2]);
     });
     vignette();
-    drawBoard();
     const raw = (t - (draw.t || t)) / 1000, dt = Math.min(.05, raw); draw.t = t;
     if (!document.hidden) { // 后台标签页的巨帧不参与性能判定
       S.frameDt = S.frameDt * .95 + Math.min(.2, raw) * .05;
@@ -177,17 +189,25 @@ window.Snake = window.Snake || {};
       else S.fxGood = 0;
     }
     const now = performance.now(), fg = K.MODES[S.mode].players === 2 ? '#cbd5e1' : pal.food;
+    S.pl.forEach((p, i) => { // 每帧算一次插值坐标，后续所有绘制层共用
+      const arr = PTS[i];
+      for (let j = 0; j < p.body.length; j++) { if (!arr[j]) arr[j] = { x: 0, y: 0 }; segPos(p, j, t, arr[j]); }
+      arr.length = p.body.length;
+    });
+    const sh = shakeT ? Math.max(0, 1 - (t - shakeT) / 220) : 0;   // 撞击震屏：背景与结算文字不参与，只晃世界层
+    if (sh > 0) { ctx.save(); ctx.translate((K.fr(t * 1.31) - .5) * 8 * sh, (K.fr(t * 1.73 + 7) - .5) * 6 * sh); }
+    drawBoard();
     ctx.globalCompositeOperation = 'lighter';
-    S.pl.forEach((p, i) => { // 蛇与食物映在地板的光
-      const c = K.rgba(K.SK[S.skin[i]].body[1], .16);
-      if (!S.lowFx) p.body.forEach(s => { const [sx, sy] = K.P(s.x, s.y); diamond(sx, sy + K.HH, K.HW * 1.3, K.HH * 1.3, c); });
+    S.pl.forEach((p, i) => { // 蛇与食物映在地板的光（随插值）
+      const c = K.rgba(K.SK[S.skin[i]].body[1], .16), arr = PTS[i];
+      if (!S.lowFx) for (let j = 0; j < arr.length; j++) { const [sx, sy] = K.P(arr[j].x, arr[j].y); diamond(sx, sy + K.HH, K.HW * 1.3, K.HH * 1.3, c); }
       p.trail = p.trail.filter(s => now - s.b < 500);
-      streak(p, now);
+      streak(p, now, arr[0]);
     });
     S.foods.forEach(f => { const [sx, sy] = K.P(f.x, f.y); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); });
     ctx.globalCompositeOperation = 'source-over';
     const items = [];
-    S.pl.forEach((p, i) => p.body.forEach((s, j) => items.push({ x: s.x, y: s.y, i, j, n: p.body.length, head: j === 0, dead: p.dead })));
+    S.pl.forEach((p, i) => PTS[i].forEach((s, j) => items.push({ x: s.x, y: s.y, i, j, n: p.body.length, head: j === 0, dead: p.dead })));
     S.foods.forEach(f => items.push({ x: f.x, y: f.y, food: true }));
     items.sort((a, b) => (a.x + a.y) - (b.x + b.y)); // 画家算法：后 → 前
     for (const o of items) {
@@ -209,16 +229,17 @@ window.Snake = window.Snake || {};
         seam(S.pl[o.i], o.j, o.x, o.y, s, hg, col.body[2]);
       }
     }
-    S.pl.forEach((p, i) => headFx(p, t, i));
+    S.pl.forEach((p, i) => headFx(p, t, i, PTS[i][0], PTS[i]));
     S.pl.forEach((p, i) => { if (p.sprint) Snake.Fx.trail(p, i, dt); }); // 冲刺拖尾（lowFx 自动关）
     Snake.Fx.update(dt);
     Snake.Fx.draw(ctx);
     const pk = K.MODES[S.mode].players === 2;
-    if (pk) S.pl.forEach((p, i) => { // 头顶名牌
-      const [sx, sy] = K.P(p.body[0].x, p.body[0].y);
+    if (pk) S.pl.forEach((p, i) => { // 头顶名牌（随插值）
+      const hp = PTS[i][0], [sx, sy] = K.P(hp.x, hp.y);
       ctx.fillStyle = K.SK[S.skin[i]].body[2]; ctx.fillRect(sx - 12, sy - 26, 24, 15);
       ctx.fillStyle = '#fff'; ctx.font = '600 11px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.fillText(K.nm(i), sx, sy - 15);
     });
+    if (sh > 0) ctx.restore();
     if (S.state === 'ready') overlay(pk ? (K.MODES[S.mode].ai ? '人机对战' : '双人对战') : '等距贪吃蛇', pk ? (K.MODES[S.mode].ai ? 'WASD 或方向键 · E/Shift 冲刺 · 点击开始' : 'P1 WASD·E 冲刺   P2 方向键·Enter 冲刺') : '点击画面或按方向键开始');
     else if (S.state === 'paused') overlay(S.msg || '已暂停', '点击画面或按空格继续');
     else if (S.state === 'over') overlay(S.msg || (pk ? (S.winner < 0 ? '平局' : K.MODES[S.mode].ai ? (S.winner ? 'AI 获胜' : '你赢了') : 'P' + (S.winner + 1) + ' 获胜') : '游戏结束 · ' + S.pl[0].score + ' 分'), '点击画面重新开始');
