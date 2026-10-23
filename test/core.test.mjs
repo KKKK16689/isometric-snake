@@ -178,3 +178,32 @@ test('困难 AI 对随机策略胜率 ≥ 85%（200 局人机）', () => {
   assert.ok(decided > 150, 'most games should reach a decision, got ' + decided);
   assert.ok(ai / decided >= .85, 'hard AI win rate ' + (100 * ai / decided).toFixed(1) + '% < 85% (ai=' + ai + ' rnd=' + rnd + ' draw=' + other + ')');
 });
+
+test('随机 fuzz：四种模式混合操作下的核心不变量', () => {
+  const sb = load('', true); const { Snake } = sb;
+  Snake.Ai.setLevel(2);
+  for (const mode of ['easy', 'normal', 'pk', 'ai']) {
+    Snake.api.setMode(mode); Snake.api.start();
+    const S = Snake.S;
+    for (let k = 0; k < 1500 && S.state !== 'over'; k++) {
+      if (k % 3 === 0) Snake.api.press(0, NAMES[(Math.random() * 4) | 0]);
+      if (k % 5 === 2 && S.pl[1] && !S.pl[1].ai) Snake.api.press(1, NAMES[(Math.random() * 4) | 0]);
+      if (k % 7 === 1) Snake.api.setHold(0, Math.random() < .5);   // 冲刺随机开关
+      stepOnce(sb);
+      if (S.state === 'paused') { Snake.api.togglePause(); continue; }   // easy 掉命暂停 → 继续
+      const occ = new Set();
+      for (const p of S.pl) for (const s of p.body) {
+        assert.ok(Number.isInteger(s.x) && Number.isInteger(s.y) && s.x >= 0 && s.x < S.N && s.y >= 0 && s.y < S.N,
+          mode + ': 身体坐标越界/非整数 ' + s.x + ',' + s.y);
+        occ.add(s.x * 1024 + s.y);
+      }
+      for (const f of S.foods) assert.ok(!occ.has(f.x * 1024 + f.y), mode + ': 食物压在蛇身上');
+      if (S.gold) {
+        assert.ok(!occ.has(S.gold.x * 1024 + S.gold.y), mode + ': 金苹果压在蛇身上');
+        for (const f of S.foods) assert.ok(!(f.x === S.gold.x && f.y === S.gold.y), mode + ': 金苹果与食物重叠');
+      }
+      assert.equal(S.rec.length, 2 * S.myMoves, mode + ': 幽灵录制与步数失步');
+      assert.ok(S.pl.every(p => p.score >= 0 && p.energy >= 0 && p.energy <= 100), mode + ': 分数/能量越界');
+    }
+  }
+});
