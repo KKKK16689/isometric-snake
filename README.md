@@ -87,7 +87,7 @@
 - 渲染性能：光晕预渲染精灵、加法通道合批、逐帧零分配（对象池 / 原地压实 / 量化色表）、单一 rAF 循环
 - 画家算法按 `x + y` 排序绘制，保证等距遮挡正确
 - 经典 `<script>` 顺序加载（非 ES module），因此双击本地 HTML 文件也能直接运行，不受 CORS 限制
-- 无头测试：`npm test` 共 20 用例——纯逻辑 11（vm 加载 core.js/ai.js：转向 / 连击 / 碰撞 / 填满判胜 / 种子确定性 / 200 局 AI 胜率 / 四模式随机 fuzz 不变量）+ DOM 集成 9（零依赖 DOM/Canvas/WebAudio 桩按 index.html 顺序加载全部模块，确定性驱动帧循环：启动 / UI 按钮 / 触屏 / 主题×图案全遍历 / 四模式巡回 / 死亡结算 / URL 参数 / 减弱动态 / 构建产物 index.html 内联脚本端到端直跑），CI 在 PR 上跑测试并做产物漂移检查
+- 无头测试：`npm test` 共 23 用例——纯逻辑 11（vm 加载 core.js/ai.js：转向 / 连击 / 碰撞 / 填满判胜 / 种子确定性 / 200 局 AI 胜率 / 四模式随机 fuzz 不变量）+ DOM 集成 9（零依赖 DOM/Canvas/WebAudio 桩按 index.html 顺序加载全部模块，确定性驱动帧循环：启动 / UI 按钮 / 触屏 / 主题×图案全遍历 / 四模式巡回 / 死亡结算 / URL 参数 / 减弱动态 / 构建产物 index.html 内联脚本端到端直跑）+ SW 离线策略 3（桩掉 self/caches/fetch 直驱事件：install 预缓存与 activate 换缓存 / stale-while-revalidate 后台刷新 / 断网导航回退游戏壳、跨域与 POST 不接管），CI 在 PR 上跑测试并做产物漂移检查
 
 ## 目录结构
 
@@ -95,7 +95,7 @@
 index.html        # 打包成品（GitHub Pages 入口，双击即玩）
 src/              # 源码：index.html 模板 + css/ + js/（core / themes / patterns / audio / particles / render / ai / input）
 build.js          # 一键打包脚本（零依赖，node build.js）
-test/             # 无头测试（node --test，零依赖）：core.test.mjs 纯逻辑 + integration.test.mjs DOM 集成
+test/             # 无头测试（node --test，零依赖）：core.test.mjs 纯逻辑 + integration.test.mjs DOM 集成 + sw.test.mjs 离线策略
 tools/            # 图标生成器（零依赖 PNG 编码器，npm run icons）
 sw.js             # Service Worker 离线缓存（仅 http(s) 注册）
 manifest.webmanifest + icons/   # PWA 清单与图标
