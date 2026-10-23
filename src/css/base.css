@@ -60,7 +60,8 @@ body.im main{touch-action:none}
 body.im h1,body.im .tip{display:none}
 body.im .stage{display:contents}
 body.im canvas{max-width:100%;max-height:100%;align-self:center} /* 宽高由 fitCanvas 内联像素值给定，保比例防拉伸 */
-body.im .hud{position:absolute;bottom:10px;left:50%;right:auto;transform:translateX(-50%);margin:0;pointer-events:none;z-index:3;white-space:nowrap} /* 沉浸：HUD 移到底部居中——顶部让给工具栏，杜绝按钮与分数重叠 */
+body.im .hud{position:absolute;bottom:10px;left:50%;right:auto;transform:translateX(-50%);margin:0;pointer-events:none;z-index:3;white-space:nowrap;gap:20px} /* 沉浸：HUD 移到底部居中——顶部让给工具栏；绝对定位后容器收缩，gap 撑开左右两段 */
+body.im.pk .hud{bottom:112px} /* PK：抬到两侧方向垫（高约 106px）之上，窄横屏不撞 */
 body.im .mode{position:absolute;top:4px;left:50%;transform:translateX(-50%);margin:0;z-index:2;flex-wrap:wrap;justify-content:center;gap:4px 6px;max-width:calc(100vw - 16px);white-space:nowrap}
 body.im .mode button{font-size:12px;padding:3px 9px}
 body.im .mode select{font-size:12px;padding:3px 8px}
