@@ -1,6 +1,6 @@
 /* audio.js —— WebAudio 全合成音效 + 可选 BGM（零音频资源文件）
    音效：吃食（随连击升调）/ 冲刺（6 套可切换，循环）/ 撞击 / 获胜和弦 / 失败下行音。「音乐」默认关。
-   冲刺音色注册表 SPRINTS：新增音色 = 追加一条 {id,name,build}；选择持久化于 localStorage 'snake.sprint'。 */
+   冲刺音色注册表 SPRINTS：新增音色 = 追加一条 {id,name,build}；选择持久化于 localStorage 'iso-snake-sprint'。 */
 window.Snake = window.Snake || {};
 (function () {
   'use strict';
@@ -168,25 +168,25 @@ window.Snake = window.Snake || {};
   function bgmStop() { if (bgmTimer) { clearInterval(bgmTimer); bgmTimer = null; } }
 
   function init() {
-    soundOn = K.safeGet('snake.snd', '1') !== '0';
-    musicOn = K.safeGet('snake.music', '0') === '1';
+    soundOn = K.safeGet('iso-snake-snd', '1') !== '0';
+    musicOn = K.safeGet('iso-snake-music', '0') === '1';
     const snd = document.getElementById('snd'), mus = document.getElementById('mus');
     const label = (b, on, t) => { b.textContent = t; b.classList.toggle('off', !on); b.title = t + '：' + (on ? '开' : '关'); };   // 短文案省宽度，开关态用 .off 置灰 + title
     label(snd, soundOn, '音效'); label(mus, musicOn, '音乐');
     snd.addEventListener('click', e => {
-      soundOn = !soundOn; K.safeSet('snake.snd', soundOn ? '1' : '0'); label(snd, soundOn, '音效'); snd.blur();
+      soundOn = !soundOn; K.safeSet('iso-snake-snd', soundOn ? '1' : '0'); label(snd, soundOn, '音效'); snd.blur();
       if (!soundOn) stopAllWinds();
     });
     mus.addEventListener('click', e => {
-      musicOn = !musicOn; K.safeSet('snake.music', musicOn ? '1' : '0'); label(mus, musicOn, '音乐'); mus.blur();
+      musicOn = !musicOn; K.safeSet('iso-snake-music', musicOn ? '1' : '0'); label(mus, musicOn, '音乐'); mus.blur();
       musicOn ? bgmStart() : bgmStop();
     });
-    sprintId = K.safeGet('snake.sprint', SPR_DEF);       // 冲刺音色：选择持久化，非法值回退默认
+    sprintId = K.safeGet('iso-snake-sprint', SPR_DEF);       // 冲刺音色：选择持久化，非法值回退默认
     if (SPR_IDS.indexOf(sprintId) < 0) sprintId = SPR_DEF;
     const spr = document.getElementById('spr');
     if (spr) {
       spr.value = sprintId;
-      spr.addEventListener('change', () => { sprintId = spr.value; K.safeSet('snake.sprint', sprintId); spr.blur(); });
+      spr.addEventListener('change', () => { sprintId = spr.value; K.safeSet('iso-snake-sprint', sprintId); spr.blur(); });
     }
     bus.on('eat', e => {   // 吃食：基础音高随连击阶梯升调（上限后循环）；金苹果 = 高音闪烁琶音
       if (e.gold) { [880, 1174.66, 1567.98].forEach((f, k) => setTimeout(() => tone('triangle', f, f, .12, .1), k * 55)); return; }

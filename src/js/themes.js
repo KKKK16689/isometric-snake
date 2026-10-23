@@ -4,7 +4,7 @@ window.Snake = window.Snake || {};
 (function () {
   'use strict';
   const K = Snake.K, bus = Snake.bus;
-  const KEY = 'snake.theme', DEF = 'neon-night';
+  const KEY = 'iso-snake-theme', DEF = 'neon-night';   // 2.0 起统一 iso-snake-* 前缀（旧 snake.theme 由 core.js 启动时一次性迁移）
 
   /* css: 7 个 UI 变量覆盖值；canvas: 8 色渲染调色板（render.js 只读） */
   const LIST = [
