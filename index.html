@@ -33,12 +33,14 @@ h1{font-size:20px;font-weight:600;margin:0 0 8px}
 .mode{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:0 0 10px}
 .mode button{font-size:14px;padding:6px 16px;border-radius:999px;border:1px solid var(--edge);background:var(--btn);color:var(--fg)}
 .mode button.on{background:var(--fg);color:var(--bg)}
+.mode button.off{opacity:.55}
 .mode select{font-size:14px;padding:6px 10px;border-radius:999px;border:1px solid var(--edge);background:var(--btn);color:var(--fg)}
 #aiLv{display:none}
 body.ai #aiLv{display:inline-block}
 .hud{display:flex;justify-content:space-between;color:var(--muted);font-size:14px;margin-bottom:4px}
 .hud b{color:var(--fg);font-size:18px}
 .hud .c0{color:#1D9E75;font-weight:600}.hud .c1{color:#378ADD;font-weight:600}.hud .lives{color:#E24B4A}
+.hud .combo{color:#EF9F27;font-weight:600}
 .stage{display:flex;flex-direction:column;align-items:center}
 canvas{display:block;width:100%;touch-action:none}
 .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:240px;max-width:100%;margin:12px auto;order:2}
@@ -119,6 +121,7 @@ body.im:not(.pk) .sw[data-p="1"],body.im:not(.pk) .cmp[data-p="1"],body.im:not(.
 <button id="fs">全屏</button>
 <button id="snd">音效 开</button>
 <button id="mus">音乐 关</button>
+<button id="vib">震动 开</button>
 <select id="spr" aria-label="冲刺音效">
 <option value="b">冲刺 喷气</option>
 <option value="c">冲刺 蓄能</option>
@@ -192,7 +195,8 @@ window.Snake = window.Snake || {};
     },
     /* 集中调参表：散在各模块的魔法数收拢于此（平衡性迭代 / 文档 / 测试共用） */
     TUNE: {
-      lowFxOn: .032, lowFxOff: .020, lowFxRecover: 120  // render 帧耗时 EMA：超过 on 降级，低于 off 连续 recover 帧恢复
+      lowFxOn: .032, lowFxOff: .020, lowFxRecover: 120,  // render 帧耗时 EMA：超过 on 降级，低于 off 连续 recover 帧恢复
+      comboWindow: 6000, comboBonus: 1                   // 连击：6s 内持续吃食，第 2 个起每个额外 +1（×2 封顶）
     }
   };
 
@@ -237,12 +241,13 @@ window.Snake = window.Snake || {};
     S.N = n; S.W = n * K.TW + 20; S.H = n * K.TH + K.OY + 12; S.OX = S.W / 2;
     bus.emit('resize', { n });           // render 监听并同步 canvas 尺寸
   }
-  const bestKey = () => 'iso-snake-best-' + S.mode;
+  const bestKey = () => 'iso-snake-best2-' + S.mode;   // 连击计分为新榜（旧 best 键保留不迁移，两榜独立）
   function loadBest() { S.best = +safeGet(bestKey(), 0) || 0; }
   function spawn(i, p) {
     const two = K.MODES[S.mode].players === 2;
     const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
     p.body = xs.map(x => ({ x, y })); p.dir = i ? K.DIRS.upLeft : K.DIRS.downRight; p.queue = []; p.dead = false;
+    p.moveT = 0; p.moveP = 300; p.grew = false; p.tailFrom = null; p.streakAt = 0;  // 插值/连击时钟复位
   }
   function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
     const want = K.MODES[S.mode].foods;
@@ -274,7 +279,8 @@ window.Snake = window.Snake || {};
     const m = K.MODES[S.mode]; setSize(m.n);
     S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
     S.pl = [...Array(m.players)].map((_, i) => {
-      const p = { score: 0, lives: m.lives, energy: 100, locked: false, hold: false, sprint: false, trail: [], streak: 0, ai: !!m.ai && i === 1 };
+      const p = { score: 0, lives: m.lives, energy: 100, locked: false, hold: false, sprint: false, trail: [], streak: 0, ai: !!m.ai && i === 1,
+                  moveT: 0, moveP: 300, grew: false, tailFrom: null, streakAt: 0 };  // moveT/moveP：渲染插值时钟；grew/tailFrom：尾格来源
       spawn(i, p); return p;
     });
     S.foods = []; fillFoods(); S.state = 'ready'; S.msg = ''; S.winner = -1;
@@ -293,8 +299,9 @@ window.Snake = window.Snake || {};
     if (same(c1) || same(c2)) return;
     turn(p, same([-c1[0], -c1[1]]) ? c2 : c1);
   }
-  function step() {
+  function step(now) {   // now = 游戏时钟（S.last），与 rAF 的 t 同基准，供插值/连击
     S.tickN++;
+    S.pl.forEach(p => { if (p.streak > 0 && now - p.streakAt > K.TUNE.comboWindow) p.streak = 0; });   // 连击超时衰减
     S.pl.forEach((p, i) => { if (p.ai && !p.dead && Snake.hooks.think) Snake.hooks.think(p, i); });
     const dt = tickMs() / 1000;
     S.pl.forEach((p, i) => {   // 冲刺耗能 / 恢复；能量归零锁定到 30
@@ -328,8 +335,15 @@ window.Snake = window.Snake || {};
       if (!hs[i]) return;
       if (p.sprint) { p.trail.push({ x: p.body[0].x, y: p.body[0].y, b: performance.now() }); if (p.trail.length > 14) p.trail.shift(); }
       p.body.unshift(hs[i]);
-      if (eat[i] >= 0) { p.score++; p.streak++; bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, i }); }
-      else p.body.pop();
+      if (eat[i] >= 0) {
+        if (now - p.streakAt > K.TUNE.comboWindow) p.streak = 0;
+        p.streak++; p.streakAt = now;
+        const gain = 1 + (p.streak >= 2 ? K.TUNE.comboBonus : 0);   // 连击中每个食物 +2（×2 封顶）
+        p.score += gain;
+        bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, pts: gain, i });
+      }
+      else p.tailFrom = p.body.pop();
+      p.grew = eat[i] >= 0; p.moveT = now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick
     });
     const eaten = new Set(eat.filter(k => k >= 0));
     S.foods = S.foods.filter((_, k) => !eaten.has(k)); fillFoods();
@@ -365,7 +379,7 @@ window.Snake = window.Snake || {};
   function update(t) {
     if (S.state === 'playing') {
       let n = 0;
-      while (S.state === 'playing' && t - S.last >= tickMs() && n++ < 3) { S.last += tickMs(); step(); }
+      while (S.state === 'playing' && t - S.last >= tickMs() && n++ < 3) { S.last += tickMs(); step(S.last); }
       if (t - S.last > 400) S.last = t;
     }
   }
@@ -883,9 +897,21 @@ window.Snake = window.Snake || {};
     diamond(sx, sy + K.HH - hgt, K.HW * 1.7, K.HH * 1.7, K.rgba(col, .05));
     ctx.globalCompositeOperation = 'source-over';
   }
-  function streak(p, now) { // 冲刺光轨
+  /* ---------- 移动插值：core 记录 p.moveT/moveP（游戏时钟），这里按帧时刻在“上一格→当前格”间线性插值 ---------- */
+  const PTS = [[], []];                                   // 每玩家浮点格坐标缓存（逐帧复用，零分配）
+  function segPos(p, j, t, out) {
+    const cur = p.body[j], a = p.moveP ? (t - p.moveT) / p.moveP : 1;
+    if (a > 0 && a < 1) { // 中段身体来自 body[j+1]；尾段：生长帧原地，否则来自让出的旧尾格
+      const from = j < p.body.length - 1 ? p.body[j + 1] : (p.grew ? cur : (p.tailFrom || cur));
+      out.x = from.x + (cur.x - from.x) * a; out.y = from.y + (cur.y - from.y) * a;
+    } else { out.x = cur.x; out.y = cur.y; }              // a≥1（未动/暂停/结束）停稳在当前格
+    return out;
+  }
+  let shakeT = 0;
+  bus.on('crash', () => { if (!matchMedia('(prefers-reduced-motion: reduce)').matches) shakeT = performance.now(); });  // 撞击震屏 ~220ms，尊重系统减弱动态
+  function streak(p, now, hp) { // 冲刺光轨（头点用插值坐标）
     const pts = p.trail.map(s => { const [sx, sy] = K.P(s.x, s.y); return [sx, sy + K.HH - 6, 1 - (now - s.b) / 500]; });
-    if (p.sprint) { const [hx, hy] = K.P(p.body[0].x, p.body[0].y); pts.push([hx, hy + K.HH - 6, 1]); }
+    if (p.sprint) { const [hx, hy] = K.P(hp.x, hp.y); pts.push([hx, hy + K.HH - 6, 1]); }
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     [[11, .14], [5, .35], [1.8, .9]].forEach(([w, a], k) => {
       for (let i = 1; i < pts.length; i++) {
@@ -904,27 +930,28 @@ window.Snake = window.Snake || {};
       pts.forEach((q, n) => n ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke();
     });
   }
-  function lightning(p, cx, cy, t, i) { // 头部闪电 + 沿身电弧（约 18 次/秒换种子）
+  function lightning(p, cx, cy, t, i, pts) { // 头部闪电 + 沿身电弧（约 18 次/秒换种子；弧端点用插值坐标）
     const seed = Math.floor(t / 55) * 7 + i * 101, n = p.body.length;
     ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (let b = 0; b < 3; b++) { const ang = K.fr(seed + b * 13) * 6.283, len = 24 + K.fr(seed + b * 29) * 24; zig(cx, cy, cx + Math.cos(ang) * len, cy + Math.sin(ang) * len * .6, seed + b * 7); }
     for (let k = 0; k < (S.lowFx ? 0 : 2); k++) {
-      const j = Math.floor(K.fr(seed + k * 17) * Math.max(1, n - 2)), a = K.P(p.body[j].x, p.body[j].y), c = K.P(p.body[Math.min(j + 2, n - 1)].x, p.body[Math.min(j + 2, n - 1)].y);
+      const j = Math.floor(K.fr(seed + k * 17) * Math.max(1, n - 2)), e = pts[Math.min(j + 2, n - 1)], a = K.P(pts[j].x, pts[j].y), c = K.P(e.x, e.y);
       zig(a[0], a[1] + K.HH - 8, c[0], c[1] + K.HH - 8, seed + k * 3);
     }
     ctx.globalCompositeOperation = 'source-over';
   }
-  function seam(p, j, x, y, s, hgt, col) { // 鳞片人字缝，指向蛇头
+  function seam(p, j, x, y, s, hgt, col) { // 鳞片人字缝，指向蛇头（x,y 为插值浮点格；方向仍取整数格）
     const q = p.body[j - 1]; if (!q) return;
-    const dx = q.x - x, dy = q.y - y; if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+    const c0 = p.body[j];
+    const dx = q.x - c0.x, dy = q.y - c0.y; if (Math.abs(dx) + Math.abs(dy) !== 1) return;
     const [sx, sy] = K.P(x, y), cx = sx, cy = sy + K.HH - hgt;
     const v = [(dx - dy) * K.HW * s, (dx + dy) * K.HH * s], w = [(-dy - dx) * K.HW * s, (-dy + dx) * K.HH * s];
     ctx.strokeStyle = col; ctx.lineWidth = 1.3; ctx.beginPath();
     ctx.moveTo(cx + w[0] * .5 - v[0] * .1, cy + w[1] * .5 - v[1] * .1); ctx.lineTo(cx + v[0] * .35, cy + v[1] * .35); ctx.lineTo(cx - w[0] * .5 - v[0] * .1, cy - w[1] * .5 - v[1] * .1);
     ctx.stroke();
   }
-  function headFx(p, t, i) { // 眼睛、吐舌、冲刺闪电
-    const h = p.body[0], [sx, sy] = K.P(h.x, h.y), cx = sx, cy = sy + K.HH - 9, dx = p.dir[0], dy = p.dir[1];
+  function headFx(p, t, i, hp, pts) { // 眼睛、吐舌、冲刺闪电（头位置用插值坐标）
+    const [sx, sy] = K.P(hp.x, hp.y), cx = sx, cy = sy + K.HH - 9, dx = p.dir[0], dy = p.dir[1];
     const v = [(dx - dy) * K.HW, (dx + dy) * K.HH], w = [(-dy - dx) * K.HW, (-dy + dx) * K.HH];
     if (!p.dead) {
       [-1, 1].forEach(sg => {
@@ -940,7 +967,7 @@ window.Snake = window.Snake || {};
         ctx.moveTo(ex, ey); ctx.lineTo(ex + v[0] * .12 - w[0] * .14, ey + v[1] * .12 - w[1] * .14); ctx.stroke();
       }
     }
-    if (p.sprint) lightning(p, cx, cy, t, i);
+    if (p.sprint) lightning(p, cx, cy, t, i, pts);
   }
   function overlay(t1, t2) {
     ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(0, 0, S.W, S.H);
@@ -955,7 +982,6 @@ window.Snake = window.Snake || {};
       ctx.fillRect(s[0] * S.W, s[1] * S.H, s[2], s[2]);
     });
     vignette();
-    drawBoard();
     const raw = (t - (draw.t || t)) / 1000, dt = Math.min(.05, raw); draw.t = t;
     if (!document.hidden) { // 后台标签页的巨帧不参与性能判定
       S.frameDt = S.frameDt * .95 + Math.min(.2, raw) * .05;
@@ -964,17 +990,25 @@ window.Snake = window.Snake || {};
       else S.fxGood = 0;
     }
     const now = performance.now(), fg = K.MODES[S.mode].players === 2 ? '#cbd5e1' : pal.food;
+    S.pl.forEach((p, i) => { // 每帧算一次插值坐标，后续所有绘制层共用
+      const arr = PTS[i];
+      for (let j = 0; j < p.body.length; j++) { if (!arr[j]) arr[j] = { x: 0, y: 0 }; segPos(p, j, t, arr[j]); }
+      arr.length = p.body.length;
+    });
+    const sh = shakeT ? Math.max(0, 1 - (t - shakeT) / 220) : 0;   // 撞击震屏：背景与结算文字不参与，只晃世界层
+    if (sh > 0) { ctx.save(); ctx.translate((K.fr(t * 1.31) - .5) * 8 * sh, (K.fr(t * 1.73 + 7) - .5) * 6 * sh); }
+    drawBoard();
     ctx.globalCompositeOperation = 'lighter';
-    S.pl.forEach((p, i) => { // 蛇与食物映在地板的光
-      const c = K.rgba(K.SK[S.skin[i]].body[1], .16);
-      if (!S.lowFx) p.body.forEach(s => { const [sx, sy] = K.P(s.x, s.y); diamond(sx, sy + K.HH, K.HW * 1.3, K.HH * 1.3, c); });
+    S.pl.forEach((p, i) => { // 蛇与食物映在地板的光（随插值）
+      const c = K.rgba(K.SK[S.skin[i]].body[1], .16), arr = PTS[i];
+      if (!S.lowFx) for (let j = 0; j < arr.length; j++) { const [sx, sy] = K.P(arr[j].x, arr[j].y); diamond(sx, sy + K.HH, K.HW * 1.3, K.HH * 1.3, c); }
       p.trail = p.trail.filter(s => now - s.b < 500);
-      streak(p, now);
+      streak(p, now, arr[0]);
     });
     S.foods.forEach(f => { const [sx, sy] = K.P(f.x, f.y); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); });
     ctx.globalCompositeOperation = 'source-over';
     const items = [];
-    S.pl.forEach((p, i) => p.body.forEach((s, j) => items.push({ x: s.x, y: s.y, i, j, n: p.body.length, head: j === 0, dead: p.dead })));
+    S.pl.forEach((p, i) => PTS[i].forEach((s, j) => items.push({ x: s.x, y: s.y, i, j, n: p.body.length, head: j === 0, dead: p.dead })));
     S.foods.forEach(f => items.push({ x: f.x, y: f.y, food: true }));
     items.sort((a, b) => (a.x + a.y) - (b.x + b.y)); // 画家算法：后 → 前
     for (const o of items) {
@@ -996,16 +1030,17 @@ window.Snake = window.Snake || {};
         seam(S.pl[o.i], o.j, o.x, o.y, s, hg, col.body[2]);
       }
     }
-    S.pl.forEach((p, i) => headFx(p, t, i));
+    S.pl.forEach((p, i) => headFx(p, t, i, PTS[i][0], PTS[i]));
     S.pl.forEach((p, i) => { if (p.sprint) Snake.Fx.trail(p, i, dt); }); // 冲刺拖尾（lowFx 自动关）
     Snake.Fx.update(dt);
     Snake.Fx.draw(ctx);
     const pk = K.MODES[S.mode].players === 2;
-    if (pk) S.pl.forEach((p, i) => { // 头顶名牌
-      const [sx, sy] = K.P(p.body[0].x, p.body[0].y);
+    if (pk) S.pl.forEach((p, i) => { // 头顶名牌（随插值）
+      const hp = PTS[i][0], [sx, sy] = K.P(hp.x, hp.y);
       ctx.fillStyle = K.SK[S.skin[i]].body[2]; ctx.fillRect(sx - 12, sy - 26, 24, 15);
       ctx.fillStyle = '#fff'; ctx.font = '600 11px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.fillText(K.nm(i), sx, sy - 15);
     });
+    if (sh > 0) ctx.restore();
     if (S.state === 'ready') overlay(pk ? (K.MODES[S.mode].ai ? '人机对战' : '双人对战') : '等距贪吃蛇', pk ? (K.MODES[S.mode].ai ? 'WASD 或方向键 · E/Shift 冲刺 · 点击开始' : 'P1 WASD·E 冲刺   P2 方向键·Enter 冲刺') : '点击画面或按方向键开始');
     else if (S.state === 'paused') overlay(S.msg || '已暂停', '点击画面或按空格继续');
     else if (S.state === 'over') overlay(S.msg || (pk ? (S.winner < 0 ? '平局' : K.MODES[S.mode].ai ? (S.winner ? 'AI 获胜' : '你赢了') : 'P' + (S.winner + 1) + ' 获胜') : '游戏结束 · ' + S.pl[0].score + ' 分'), '点击画面重新开始');
@@ -1095,7 +1130,7 @@ window.Snake = window.Snake || {};
   function updateHud() {
     if (K.MODES[S.mode].players === 1) {
       const p = S.pl[0];
-      $('hl').innerHTML = '得分 <b>' + p.score + '</b> <span class="lives">' + '♥'.repeat(p.lives) + '</span>';
+      $('hl').innerHTML = '得分 <b>' + p.score + '</b>' + (p.streak >= 2 ? ' <span class="combo">连击×' + p.streak + '</span>' : '') + ' <span class="lives">' + '♥'.repeat(p.lives) + '</span>';
       $('hr').innerHTML = '最高 <b>' + S.best + '</b>';
     } else {
       $('hl').innerHTML = '<span style="color:' + K.SK[S.skin[0]].body[1] + ';font-weight:600">' + K.nm(0) + '</span> 胜 <b>' + S.wins[0] + '</b> · 长 ' + S.pl[0].body.length;
@@ -1184,15 +1219,29 @@ window.Snake = window.Snake || {};
     syncModeUi(); // ?mode= 进入时同样生效（沉浸布局/滚动锁定不再依赖点击）
     drawSwatches();
 
-    // 棋盘滑动转向 / 点按暂停
-    let sx0 = 0, sy0 = 0;
+    // 棋盘滑动转向 / 点按暂停（短距+短按才算点按，慢按与小拖动不再误触暂停）
+    let sx0 = 0, sy0 = 0, st0 = 0;
     const cv = $('c');
-    cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; });
+    cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; st0 = performance.now(); });
     cv.addEventListener('pointerup', e => {
-      const dx = e.clientX - sx0, dy = e.clientY - sy0;
-      if (Math.hypot(dx, dy) < 20) return api.togglePause();
-      if (S.mode !== 'pk') api.press(0, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+      const dx = e.clientX - sx0, dy = e.clientY - sy0, dist = Math.hypot(dx, dy);
+      if (dist < 16 && performance.now() - st0 < 300) return api.togglePause();
+      if (dist >= 20 && S.mode !== 'pk') api.press(0, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
     });
+
+    /* ---------- 震动反馈（移动端）：吃食/撞击/起冲轻震，可一键关闭并持久化 ---------- */
+    let vibOn = K.safeGet('iso-snake-vib', '1') !== '0';
+    const vib = ms => { if (vibOn && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } };
+    const vibBtn = $('vib');
+    const vibLabel = () => { vibBtn.textContent = '震动 ' + (vibOn ? '开' : '关'); vibBtn.classList.toggle('off', !vibOn); };
+    vibBtn.addEventListener('click', () => {
+      vibBtn.blur(); vibOn = !vibOn; K.safeSet('iso-snake-vib', vibOn ? '1' : '0'); vibLabel();
+      if (vibOn) vib(12);                                  // 开启时震一下作确认
+    });
+    vibLabel();
+    bus.on('eat', () => vib(10));
+    bus.on('crash', () => vib(50));
+    bus.on('sprintOn', () => vib(5));
 
     bus.on('hud', updateHud);
     (function ui() { updateBars(); requestAnimationFrame(ui); })(); // 状态条/罗盘每帧同步

@@ -14,7 +14,7 @@ window.Snake = window.Snake || {};
   function updateHud() {
     if (K.MODES[S.mode].players === 1) {
       const p = S.pl[0];
-      $('hl').innerHTML = '得分 <b>' + p.score + '</b> <span class="lives">' + '♥'.repeat(p.lives) + '</span>';
+      $('hl').innerHTML = '得分 <b>' + p.score + '</b>' + (p.streak >= 2 ? ' <span class="combo">连击×' + p.streak + '</span>' : '') + ' <span class="lives">' + '♥'.repeat(p.lives) + '</span>';
       $('hr').innerHTML = '最高 <b>' + S.best + '</b>';
     } else {
       $('hl').innerHTML = '<span style="color:' + K.SK[S.skin[0]].body[1] + ';font-weight:600">' + K.nm(0) + '</span> 胜 <b>' + S.wins[0] + '</b> · 长 ' + S.pl[0].body.length;
@@ -103,15 +103,29 @@ window.Snake = window.Snake || {};
     syncModeUi(); // ?mode= 进入时同样生效（沉浸布局/滚动锁定不再依赖点击）
     drawSwatches();
 
-    // 棋盘滑动转向 / 点按暂停
-    let sx0 = 0, sy0 = 0;
+    // 棋盘滑动转向 / 点按暂停（短距+短按才算点按，慢按与小拖动不再误触暂停）
+    let sx0 = 0, sy0 = 0, st0 = 0;
     const cv = $('c');
-    cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; });
+    cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; st0 = performance.now(); });
     cv.addEventListener('pointerup', e => {
-      const dx = e.clientX - sx0, dy = e.clientY - sy0;
-      if (Math.hypot(dx, dy) < 20) return api.togglePause();
-      if (S.mode !== 'pk') api.press(0, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+      const dx = e.clientX - sx0, dy = e.clientY - sy0, dist = Math.hypot(dx, dy);
+      if (dist < 16 && performance.now() - st0 < 300) return api.togglePause();
+      if (dist >= 20 && S.mode !== 'pk') api.press(0, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
     });
+
+    /* ---------- 震动反馈（移动端）：吃食/撞击/起冲轻震，可一键关闭并持久化 ---------- */
+    let vibOn = K.safeGet('iso-snake-vib', '1') !== '0';
+    const vib = ms => { if (vibOn && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } };
+    const vibBtn = $('vib');
+    const vibLabel = () => { vibBtn.textContent = '震动 ' + (vibOn ? '开' : '关'); vibBtn.classList.toggle('off', !vibOn); };
+    vibBtn.addEventListener('click', () => {
+      vibBtn.blur(); vibOn = !vibOn; K.safeSet('iso-snake-vib', vibOn ? '1' : '0'); vibLabel();
+      if (vibOn) vib(12);                                  // 开启时震一下作确认
+    });
+    vibLabel();
+    bus.on('eat', () => vib(10));
+    bus.on('crash', () => vib(50));
+    bus.on('sprintOn', () => vib(5));
 
     bus.on('hud', updateHud);
     (function ui() { updateBars(); requestAnimationFrame(ui); })(); // 状态条/罗盘每帧同步

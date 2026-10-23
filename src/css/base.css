@@ -8,12 +8,14 @@ h1{font-size:20px;font-weight:600;margin:0 0 8px}
 .mode{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:0 0 10px}
 .mode button{font-size:14px;padding:6px 16px;border-radius:999px;border:1px solid var(--edge);background:var(--btn);color:var(--fg)}
 .mode button.on{background:var(--fg);color:var(--bg)}
+.mode button.off{opacity:.55}
 .mode select{font-size:14px;padding:6px 10px;border-radius:999px;border:1px solid var(--edge);background:var(--btn);color:var(--fg)}
 #aiLv{display:none}
 body.ai #aiLv{display:inline-block}
 .hud{display:flex;justify-content:space-between;color:var(--muted);font-size:14px;margin-bottom:4px}
 .hud b{color:var(--fg);font-size:18px}
 .hud .c0{color:#1D9E75;font-weight:600}.hud .c1{color:#378ADD;font-weight:600}.hud .lives{color:#E24B4A}
+.hud .combo{color:#EF9F27;font-weight:600}
 .stage{display:flex;flex-direction:column;align-items:center}
 canvas{display:block;width:100%;touch-action:none}
 .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:240px;max-width:100%;margin:12px auto;order:2}
