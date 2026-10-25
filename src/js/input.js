@@ -121,7 +121,8 @@ window.Snake = window.Snake || {};
       const dx = e.clientX - sx0, dy = e.clientY - sy0;
       if (fired || S.mode === 'pk' || Math.hypot(dx, dy) < SWIPE_MIN) return;
       fired = true;
-      api.press(0, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+      // 滑动按屏幕象限直接对应一个格方向（右上/右下/左下/左上）——等距下「取主轴」会整体偏 45°
+      api.press(0, dx > 0 ? (dy > 0 ? 'right' : 'up') : (dy > 0 ? 'down' : 'left'));
     };
     cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; st0 = performance.now(); fired = false; });
     cv.addEventListener('pointermove', e => { if (e.buttons || e.pointerType !== 'mouse') swipe(e); });

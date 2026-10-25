@@ -208,15 +208,14 @@ window.Snake = window.Snake || {};
     FOOD_PK: ['#FFFFFF', '#CBD5E1', '#94A3B8'],
     /* 格坐标方向（等距屏上视角） */
     DIRS: { upRight: [0, -1], downRight: [1, 0], downLeft: [0, 1], upLeft: [-1, 0] },
-    /* 屏幕方向 → 两个候选格方向；steer() 挑能转弯的那个。
-       顺序即优先级：c1 优先，除非 c1 正好是当前方向的反向（那时选 c2，避免硬掉头）。
-       表必须按「屏幕观感」配：↑ 给朝上的两个（右上/左上）、↓ 给朝下的两个、← 给朝左的两个、→ 给朝右的两个。
-       （旧表把 ↑ 配成「右上/右下」——等于所有按键整体偏了 45°：往下走时按 ↑ 会被忽略、按 ↓ 反而左转。） */
+    /* 方向键 → 格方向：**一键一方向**（4 个键各自控制一个方向，按下必转，不再「一键两个候选」）。
+       等距屏上顺时针一圈：↑ = 右上、→ = 右下、↓ = 左下、← = 左上。
+       turn() 会拒绝「与当前/排队方向相同」与「反向掉头」，所以按到自己正在走的方向＝不动、按反向＝不动。 */
     SCREEN: {
-      up:    [[0, -1], [-1, 0]],   // 右上 / 左上
-      down:  [[1, 0], [0, 1]],     // 右下 / 左下
-      left:  [[-1, 0], [0, 1]],    // 左上 / 左下
-      right: [[0, -1], [1, 0]]     // 右上 / 右下
+      up:    [0, -1],   // 右上
+      right: [1, 0],    // 右下
+      down:  [0, 1],    // 左下
+      left:  [-1, 0]    // 左上
     },
     /* 集中调参表：散在各模块的魔法数收拢于此（平衡性迭代 / 文档 / 测试共用） */
     TUNE: {
@@ -449,12 +448,9 @@ window.Snake = window.Snake || {};
     if (d[0] + ref[0] === 0 && d[1] + ref[1] === 0) return;
     if (p.queue.length < 2) p.queue.push(d);
   }
-  function steer(p, name) {
-    const ref = p.queue.length ? p.queue[p.queue.length - 1] : p.dir;
-    const [c1, c2] = K.SCREEN[name];
-    const same = c => c[0] === ref[0] && c[1] === ref[1];
-    if (same(c1) || same(c2)) return;
-    turn(p, same([-c1[0], -c1[1]]) ? c2 : c1);
+  function steer(p, name) {           // 一键一方向：直接交给 turn()（它负责忽略「同向」与「反向」）
+    const d = K.SCREEN[name];
+    if (d) turn(p, d);
   }
   function step(now) {   // now = 游戏时钟（S.last），与 rAF 的 t 同基准，供插值/连击
     S.tickN++;
@@ -1428,7 +1424,7 @@ window.Snake = window.Snake || {};
      几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
   const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: .75 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
-  const BUILD = 'stage3.3';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
+  const BUILD = 'stage3.4';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
   const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
     const m = /(^|[?&])q=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
@@ -2295,7 +2291,8 @@ window.Snake = window.Snake || {};
       const dx = e.clientX - sx0, dy = e.clientY - sy0;
       if (fired || S.mode === 'pk' || Math.hypot(dx, dy) < SWIPE_MIN) return;
       fired = true;
-      api.press(0, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+      // 滑动按屏幕象限直接对应一个格方向（右上/右下/左下/左上）——等距下「取主轴」会整体偏 45°
+      api.press(0, dx > 0 ? (dy > 0 ? 'right' : 'up') : (dy > 0 ? 'down' : 'left'));
     };
     cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; st0 = performance.now(); fired = false; });
     cv.addEventListener('pointermove', e => { if (e.buttons || e.pointerType !== 'mouse') swipe(e); });

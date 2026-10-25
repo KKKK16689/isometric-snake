@@ -71,8 +71,10 @@ test('转向队列：最多存 2 个待执行转向，180° 掉头被拒绝', ()
   Snake.api.press(0, 'right');
   assert.ok(p.queue.length <= 2, 'queue capped at 2, got ' + p.queue.length);
   p.queue = []; p.dir = [1, 0];
-  Snake.api.press(0, 'left');                                 // c1=[-1,0] 是掉头 → 必须改选 c2=[0,1]（左下＝屏幕上的左转）
-  assert.ok(eq(p.queue[0], 0, 1), '180° reversal must be refused, got ' + JSON.stringify(p.queue[0]));
+  Snake.api.press(0, 'left');                                 // left＝左上，正好是「右下」的反向 ⇒ 必须被忽略（不许掉头）
+  assert.equal(p.queue.length, 0, '180° 反向键必须被忽略，实际入队 ' + JSON.stringify(p.queue));
+  Snake.api.press(0, 'down');                                 // down＝左下，与「右下」垂直 ⇒ 正常入队（正向对照）
+  assert.ok(eq(p.queue[0], 0, 1), '垂直方向键应当入队，实际 ' + JSON.stringify(p.queue[0]));
 });
 
 test('吃食：增长 + 计分 + 窗口内连击额外 +1', () => {
@@ -272,16 +274,16 @@ test('3D 双人对战食物数 = K.TUNE.foods3d；经典仍用 MODES.foods', () 
   assert.equal(c.Snake.S.foods.length, 3, '经典人机对战仍是 3 颗（MODES.foods）');
 });
 
-/* ---------- 屏幕方向键映射：↑↓←→ 各自只往屏幕同侧转，已在同侧则忽略 ---------- */
-test('屏幕方向键映射：↑↓←→ 按屏幕方向生效（旧表整体偏 45°——往右下走按 ↑ 会毫无反应）', () => {
+/* ---------- 方向键映射：一键一方向（↑右上 / →右下 / ↓左下 / ←左上），同向与反向都被忽略 ---------- */
+test('方向键映射：4 个键各自控制一个方向，按同向/反向不动，按垂直方向必转', () => {
   const sb = load(); sb.Snake.api.reset(); sb.Snake.api.start();
   const V = { upRight: [0, -1], downRight: [1, 0], downLeft: [0, 1], upLeft: [-1, 0] };
   const N = { '0,-1': 'upRight', '1,0': 'downRight', '0,1': 'downLeft', '-1,0': 'upLeft' };
-  const T = {   // 当前朝向 × 按键 → 期望结果（null = 该键此时应被忽略：已在朝那侧走）
-    upRight:   { up: null,      down: 'downRight', left: 'upLeft',   right: null },
-    downRight: { up: 'upRight', down: null,        left: 'downLeft', right: null },
-    downLeft:  { up: 'upLeft',  down: null,        left: null,       right: 'downRight' },
-    upLeft:    { up: null,      down: 'downLeft',  left: null,       right: 'upRight' },
+  const T = {   // 当前朝向 × 按键 → 期望结果（null = 该键此时应被忽略：同一个方向＝同向，对面方向＝不许掉头）
+    upRight:   { up: null,       right: 'downRight', down: null,      left: 'upLeft' },
+    downRight: { up: 'upRight',  right: null,        down: 'downLeft', left: null },
+    downLeft:  { up: null,       right: 'downRight', down: null,      left: 'upLeft' },
+    upLeft:    { up: 'upRight',  right: null,        down: 'downLeft', left: null },
   };
   for (const cur of Object.keys(T)) for (const key of Object.keys(T[cur])) {
     const p = sb.Snake.S.pl[0];
@@ -455,8 +457,7 @@ test('经典模式行为锁：固定种子与输入脚本跑 1200 tick，状态�
   const sb = load('?seed=20261025'); const SN = sb.Snake;
   SN.api.startDaily(20261025); SN.api.start();               // 确定性随机流：同种子必然同一条食物序列
   const S = SN.S, p = S.pl[0], KEYS = ['up', 'right', 'down', 'left'];
-  const V = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-  const CAND = { up: [[0, -1], [-1, 0]], down: [[1, 0], [0, 1]], left: [[-1, 0], [0, 1]], right: [[0, -1], [1, 0]] };
+  const V = { up: [0, -1], right: [1, 0], down: [0, 1], left: [-1, 0] };   // 一键一方向：与 core.K.SCREEN 同步
   const eq = (a, b) => a[0] === b[0] && a[1] === b[1];
   const free = (x, y) => x >= 1 && y >= 1 && x < S.N - 1 && y < S.N - 1 && !p.body.some(s => s.x === x && s.y === y);
   const space = v => {                                       // 沿该方向向量还能走几格（留 1 格边距 + 避自身）
@@ -471,9 +472,9 @@ test('经典模式行为锁：固定种子与输入脚本跑 1200 tick，状态�
       const ref = p.queue.length ? p.queue[p.queue.length - 1] : p.dir, f = S.foods[0];
       let best = null, bestScore = -1e9;
       for (const d of KEYS) {                                // 固定次序遍历 ⇒ 完全确定
-        const [c1, c2] = CAND[d];
-        if (eq(c1, ref) || eq(c2, ref)) continue;            // 该键会被 steer() 整键忽略
-        const res = eq([-c1[0], -c1[1]], ref) ? c2 : c1;     // 与 core.steer() 同规则算出落点方向
+        const res = V[d];                                    // 一键一方向：按键直接决定落点方向
+        if (eq(res, ref)) continue;                          // 与当前/排队方向相同 ⇒ turn() 会忽略
+        if (res[0] + ref[0] === 0 && res[1] + ref[1] === 0) continue;   // 反向掉头 ⇒ turn() 会忽略
         const sc = space(res) * 100 - (Math.abs(p.body[0].x + res[0] - f.x) + Math.abs(p.body[0].y + res[1] - f.y));
         if (sc > bestScore) { bestScore = sc; best = d; }    // 先要活路（前瞻空格数），再贪食物
       }
