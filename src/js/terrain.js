@@ -88,6 +88,11 @@ window.Snake = window.Snake || {};
         }
         const a = T.at(x, y) || [];
         for (const l of a) if (isWalk(l) && l.h !== fromH && Math.abs(l.h - fromH) <= 1) out.push({ x, y, L: l.h, cost: 1, portal: false });
+        const cur2 = T.layerAt(x, y, fromH);
+        if (cur2 && cur2.kind === 'portal' && cur2.portal) {   // 传送门＝层图上的双向边（规格 §3.4），不是瞬移特判
+          const pe = T.portalTo(x, y, cur2.portal);
+          if (pe) out.push({ x: pe.x, y: pe.y, L: pe.L, cost: 1, portal: true });
+        }
         return out;
       },
       /* 层图 BFS：从 (x,y,L) 出发，返回 Map(key → 距离)；pred 可选，用于过滤节点 */

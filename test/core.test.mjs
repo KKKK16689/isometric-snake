@@ -281,6 +281,43 @@ test('屏幕方向键映射：↑↓←→ 按屏幕方向生效（旧表整体�
   }
 });
 
+/* ---------- Stage 2：层规则（远征专用；经典模式不受影响） ---------- */
+function expSB() {                    // 远征沙箱：reset() 会按 URL 建层图并开局
+  const sb = load('?mode=expedition&level=test-24', false, true);
+  sb.Snake.api.reset();
+  return sb;
+}
+function place(sb, cells, dir) {      // 把 p0 摆成 cells 指定的样子（头在前，每节带层号 L）
+  const p = sb.Snake.S.pl[0];
+  p.body = cells.map(c => ({ x: c.x, y: c.y, L: c.L || 0 }));
+  p.dir = dir.slice(); p.queue.length = 0; p.dead = false;
+  sb.Snake.S.state = 'playing'; sb.Snake.S.now = 0; p.moveT = 0; p.moveP = 300;
+  return p;
+}
+test('远征：桥下可通行——同一格不同层互不阻挡，也不吃上层食物（§3.2/§3.5）', () => {
+  const sb = expSB(), S = sb.Snake.S;
+  assert.ok(S.T, '远征必须已建层图');
+  const p = place(sb, [{ x: 8, y: 16, L: 0 }, { x: 7, y: 16, L: 0 }], [1, 0]);   // (8..9,16) 是 'b'：地面 h0 + 桥面 h2
+  S.foods = [{ x: 9, y: 16, L: 2 }];                                            // 桥面上放一颗食物
+  moveOnce(sb, p);
+  assert.equal(S.state, 'playing', '桥下直行不该撞死');
+  assert.equal(p.body[0].x, 9, '应走到 (9,16) 的地面层');
+  assert.equal(p.body[0].L || 0, 0, '应仍在桥下层');
+  assert.equal(S.foods.length, 1, '桥面上的食物不该被桥下的头吃掉');
+});
+test('远征：悬崖/墙按高差阻挡，踩传送门下一步就穿到对端（§3.3/§3.4）', () => {
+  const a = expSB();                                                            // 悬崖：(2,12) 地面 h0 往左是外墙 '#'(h3)，高差 3 > 1
+  const pa = place(a, [{ x: 2, y: 12, L: 0 }, { x: 3, y: 12, L: 0 }], [-1, 0]);
+  for (let i = 0; i < 8 && a.Snake.S.state === 'playing'; i++) stepOnce(a);
+  assert.equal(a.Snake.S.state, 'over', '高差 > 1 的相邻格必须挡住（悬崖/围墙）');
+  const b = expSB();                                                            // 传送门：站在 P(2,2)，下一步到 p(21,3)
+  const pb = place(b, [{ x: 2, y: 2, L: 0 }, { x: 3, y: 2, L: 0 }], [-1, 0]);
+  moveOnce(b, pb);
+  assert.equal(b.Snake.S.state, 'playing', '传送门两端都可走，不该算撞');
+  assert.equal(pb.body[0].x, 21, '应被送到对端 (21,3)，实际 ' + pb.body[0].x + ',' + pb.body[0].y);
+  assert.equal(pb.body[0].y, 3, '应被送到对端 (21,3)');
+});
+
 /* ---------- 3.0 远征：层图接管地图（Stage 1 只做墙/水硬阻挡，高差与传送见 Stage 2） ---------- */
 test('远征模式：层图接管地图——24×24、视口 18、关卡出生点、墙水阻挡、食物落在可走格、相机跟随', () => {
   const sb = load('?mode=expedition&level=test-24', false, true);
