@@ -31,6 +31,9 @@ function load(search = '', withAi = false) {
     __t: 0, store,
   };
   sandbox.window = sandbox;
+  let _rs = 20261025;   // 确定性 LCG：AI 误差随机与食物落点在整局 soak 中可复现（免得随机失败）
+  sandbox.Math = Object.create(Math);
+  sandbox.Math.random = () => { _rs = (_rs * 1103515245 + 12345) % 2147483648; return _rs / 2147483648; };
   vm.createContext(sandbox);
   vm.runInContext(SRC.core, sandbox, { filename: 'core.js' });
   if (withAi) {   // 无头：跳过 ai.init() 的 DOM 绑定，直接挂 think
@@ -205,6 +208,50 @@ test('随机 fuzz：四种模式混合操作下的核心不变量', () => {
       assert.equal(S.rec.length, 2 * S.myMoves, mode + ': 幽灵录制与步数失步');
       assert.ok(S.pl.every(p => p.score >= 0 && p.energy >= 0 && p.energy <= 100), mode + ': 分数/能量越界');
     }
+  }
+});
+
+/* ---------- 长局 soak：四模式双 AI 自走（高分局）——速度模型/食物唯一性/身体唯一性全程成立 ---------- */
+test('长局 soak：四模式双 AI 自走，移动节奏不越界、食物与身体唯一', () => {
+  const sb = load('', true); const { Snake } = sb;
+  Snake.Ai.setLevel(2);
+  for (const mode of ['easy', 'normal', 'pk', 'ai']) {
+    Snake.api.setMode(mode); Snake.api.start();
+    const S = Snake.S;
+    S.pl.forEach(p => { p.ai = true; });   // 连单人模式也交给困难 AI 自走，soak 才有高分局（速度上限、金苹果轮换、填盘边缘）
+    let ticks = 0, moves = 0, maxScore = 0, badGaps = 0, lastMoveTick = 0, lives0 = S.pl[0].lives;
+    for (let k = 0; k < 1500 && S.state !== 'over'; k++) {
+      const mt0 = S.pl[0].moveT;
+      stepOnce(sb); ticks++;
+      if (S.state === 'paused') { Snake.api.togglePause(); continue; }   // easy 掉命进复活暂停 → 继续
+      if (S.pl[0].lives !== lives0) {        // 掉命→重生：跨复活的间隔不算速度越界（重生那一拍本来就不动）
+        lives0 = S.pl[0].lives; lastMoveTick = 0;
+      }
+      if (S.pl[0].moveT !== mt0) {           // 玩家 0 走了一格：同一命内两次移动之间只允许 1（冲刺）或 2 个 tick
+        if (lastMoveTick && S.tickN - lastMoveTick > 2) badGaps++;
+        lastMoveTick = S.tickN; moves++;
+      }
+      for (const p of S.pl) if (p.score > maxScore) maxScore = p.score;
+      assert.ok(S.foods.length >= 1 && S.foods.length <= 3, mode + ': 对局中食物数量异常 ' + S.foods.length);
+      assert.equal(S.rec.length, 2 * S.myMoves, mode + ': 幽灵录制与步数失步');
+      if (k % 100 === 0) {                   // 较重的唯一性检查每 100 tick 做一次
+        const fk = new Set(S.foods.map(f => f.x * 1024 + f.y));
+        assert.equal(fk.size, S.foods.length, mode + ': 食物位置重复');
+        for (const p of S.pl) {
+          const seen = new Set();
+          for (const s of p.body) {
+            const key = s.x * 1024 + s.y;
+            assert.ok(!seen.has(key), mode + ': 同一玩家的身体自相交 ' + s.x + ',' + s.y);
+            seen.add(key);
+          }
+          for (const f of S.foods) assert.ok(!seen.has(f.x * 1024 + f.y), mode + ': 食物压在蛇身上');
+          if (S.gold) assert.ok(!seen.has(S.gold.x * 1024 + S.gold.y), mode + ': 金苹果压在蛇身上');
+        }
+      }
+    }
+    assert.equal(badGaps, 0, mode + ': 出现两次移动间隔 > 2 tick（速度模型越界）' + badGaps + ' 次');
+    assert.ok(moves > 40, mode + ': soak 覆盖不足（moves=' + moves + ' ticks=' + ticks + '）');
+    assert.ok(maxScore >= 5, mode + ': soak 没跑出成绩（maxScore=' + maxScore + ' moves=' + moves + '）');
   }
 });
 
