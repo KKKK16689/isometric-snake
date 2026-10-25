@@ -291,6 +291,13 @@ window.Snake = window.Snake || {};
   }
   /* 是否阻挡：有层图按层图（Stage 1 只看最高可走层 ⇒ 墙/水挡、高台与桥面可走），否则按棋盘边界 */
   const solid = (x, y) => S.T ? !S.T.hasWalk(x, y) : (x < 0 || y < 0 || x >= S.N || y >= S.N);
+  /* 站在传送门层上时的出口（规格 §3.4）：传送门是层图上的双向边，踩上去下一步送到对端，路径允许不连续 */
+  function portalEdge(x, y, L) {
+    const l = S.T && S.T.layerAt(x, y, L);
+    if (!l || l.kind !== 'portal' || !l.portal) return null;
+    const pe = S.T.portalTo(x, y, l.portal);
+    return pe ? { x: pe.x, y: pe.y, L: pe.L } : null;
+  }
   /* 相机：跟随 p0 头部——死区 2 格定出目标，再按指数平滑追上去（不跳格才丝滑）；经典模式固定在地图中心 */
   function camFollow() {
     if (!S.T) { S.camCX = (S.N - 1) / 2; S.camCY = (S.N - 1) / 2; return; }
@@ -339,23 +346,47 @@ window.Snake = window.Snake || {};
     if (S.T) {   // 远征：出生点与朝向来自关卡数据，蛇身沿反方向铺 3 格（关卡校验保证前方有 3 格跑道）
       const s = S.T.spawns[Math.min(i, S.T.spawns.length - 1)];
       dir = K.DIRS[s.dir] || K.DIRS.downRight;
-      p.body = [0, 1, 2].map(k => ({ x: s.x - dir[0] * k, y: s.y - dir[1] * k }));
-    } else {     // 经典：出生点与朝向保持 2.0 原样（行为锁/视觉锁依赖它）
+      p.body = [0, 1, 2].map(k => {   // 每节带层高 L（规格 §3.2：碰撞/吃食/占位只比同 (x,y,L)）
+        const bx = s.x - dir[0] * k, by = s.y - dir[1] * k;
+        const tw = S.T.topWalk(bx, by);
+        return { x: bx, y: by, L: tw ? tw.h : 0 };
+      });
+    } else {     // 经典：出生点与朝向保持 2.0 原样（行为锁/视觉锁依赖它）；L 恒 0
       const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
-      p.body = xs.map(x => ({ x, y })); dir = i ? K.DIRS.upLeft : K.DIRS.downRight;
+      p.body = xs.map(x => ({ x, y, L: 0 })); dir = i ? K.DIRS.upLeft : K.DIRS.downRight;
     }
     p.dir = dir; p.queue = []; p.dead = false;
     p.moveT = 0; p.moveTGame = 0; p.moveP = 300; p.grew = false; p.tailFrom = null; p.streakAt = 0;  // 插值/连击时钟复位
   }
+  /* 可放格列表（食物/金苹果共用）
+     远征：每格取「最高可走层」（规格 §3.5：桥下地面不生成，避免看不见却吃得到），并只保留从 p0 头所在层
+     可达的节点——层图 BFS 一次算完；经典：x*1024+y 原语义，L 恒 0（行为锁依赖原语义）。 */
+  function freeCells() {
+    const taken = new Set();
+    const tk = s => S.T ? S.T.key(s.x, s.y, s.L || 0) : (s.x * 1024 + s.y);
+    S.pl.forEach(p => p.body.forEach(s => taken.add(tk(s))));
+    S.foods.forEach(f => taken.add(tk(f)));
+    if (S.gold) taken.add(tk(S.gold));   // 金苹果占位：补充食物不得与其重叠
+    let reach = null;
+    if (S.T) {
+      const h = S.pl[0] && S.pl[0].body[0];
+      reach = h ? S.T.reachable(h.x, h.y, h.L || 0) : null;   // §3.5：不可达的层不生成
+    }
+    const free = [];
+    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) {
+      if (S.T) {
+        const tw = S.T.topWalk(x, y); if (!tw) continue;
+        const k = S.T.key(x, y, tw.h);
+        if (reach && !reach.has(k)) continue;
+        if (!taken.has(k)) free.push({ x, y, L: tw.h });
+      } else if (!taken.has(x * 1024 + y)) free.push({ x, y, L: 0 });
+    }
+    return free;
+  }
   function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
     const want = K.MODES[S.mode].foods;
     if (S.foods.length >= want) return;
-    const taken = new Set();
-    S.pl.forEach(p => p.body.forEach(s => taken.add(s.x * 1024 + s.y)));
-    S.foods.forEach(f => taken.add(f.x * 1024 + f.y));
-    if (S.gold) taken.add(S.gold.x * 1024 + S.gold.y);   // 金苹果占位：补充食物不得与其重叠
-    const free = [];
-    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) { if (S.T && !S.T.hasWalk(x, y)) continue; if (!taken.has(x * 1024 + y)) free.push({ x, y }); }   // 远征：食物只落在可走格
+    const free = freeCells();
     while (S.foods.length < want) {
       if (!free.length) { boardFull(); return; }
       const k = rand(free.length);
@@ -363,15 +394,11 @@ window.Snake = window.Snake || {};
     }
   }
   function spawnGold(now) {   // 金苹果落在任意空格（与蛇身/普通食物互斥）
-    const taken = new Set();
-    S.pl.forEach(p => p.body.forEach(s => taken.add(s.x * 1024 + s.y)));
-    S.foods.forEach(f => taken.add(f.x * 1024 + f.y));
-    const free = [];
-    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) { if (S.T && !S.T.hasWalk(x, y)) continue; if (!taken.has(x * 1024 + y)) free.push({ x, y }); }
+    const free = freeCells();
     if (!free.length) return;
     const c = free[rand(free.length)];
-    S.gold = { x: c.x, y: c.y, born: now };
-    bus.emit('goldSpawn', { x: c.x, y: c.y });
+    S.gold = { x: c.x, y: c.y, L: c.L, born: now };
+    bus.emit('goldSpawn', { x: c.x, y: c.y, L: c.L });
   }
   function boardFull() { // 棋盘被蛇填满：单人视为获胜，双人判平局
     S.state = 'over'; S.overAt = performance.now();
@@ -433,13 +460,24 @@ window.Snake = window.Snake || {};
       if (!p.sprint && was) bus.emit('sprintOff', { i });
     });
     const mv = S.pl.map(p => p.sprint || S.tickN % 2 === 0); // 冲刺每 tick 动，平时隔 tick
-    const hs = S.pl.map((p, i) => { if (!mv[i]) return null; if (p.queue.length) p.dir = p.queue.shift(); return { x: p.body[0].x + p.dir[0], y: p.body[0].y + p.dir[1] }; });
-    const eat = hs.map(h => h ? S.foods.findIndex(f => f.x === h.x && f.y === h.y) : -1);
+    const hs = S.pl.map((p, i) => {
+      if (!mv[i]) return null;
+      if (p.queue.length) p.dir = p.queue.shift();
+      const h0 = p.body[0], L0 = h0.L || 0;
+      if (!S.T) return { x: h0.x + p.dir[0], y: h0.y + p.dir[1], L: 0, bad: solid(h0.x + p.dir[0], h0.y + p.dir[1]) };
+      const pe = portalEdge(h0.x, h0.y, L0);                       // §3.4：踩在传送门上 → 本步走传送门边
+      if (pe) return pe;
+      const nx = h0.x + p.dir[0], ny = h0.y + p.dir[1], pk = S.T.pick(nx, ny, L0);   // §3.3：按层选落点
+      if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
+      return { x: nx, y: ny, L: pk.h };
+    });
+    const eat = hs.map(h => h ? S.foods.findIndex(f => f.x === h.x && f.y === h.y && (f.L || 0) === (h.L || 0)) : -1);
     const hit = hs.map((h, i) => {
       if (!h) return false;
-      if (solid(h.x, h.y)) return true;   // 经典＝棋盘边界；远征＝层图上的墙/水（Stage 1 只做硬阻挡，高差/桥/传送见 Stage 2）
-      if (hs.some((o, j) => j !== i && o && o.x === h.x && o.y === h.y)) return true; // 对头相撞
-      return S.pl.some((q, j) => (mv[j] && eat[j] < 0 ? q.body.slice(0, -1) : q.body).some(s => s.x === h.x && s.y === h.y));
+      if (h.bad) return true;                                      // 撞墙/水/悬崖
+      const L = h.L || 0;
+      if (hs.some((o, j) => j !== i && o && !o.bad && o.x === h.x && o.y === h.y && (o.L || 0) === L)) return true;  // 对头相撞（同层才算）
+      return S.pl.some((q, j) => (mv[j] && eat[j] < 0 ? q.body.slice(0, -1) : q.body).some(s => s.x === h.x && s.y === h.y && (s.L || 0) === L));
     });
     if (K.MODES[S.mode].players === 1) {
       const p = S.pl[0];
@@ -452,7 +490,7 @@ window.Snake = window.Snake || {};
     } else if (hit.some(Boolean)) { hit.forEach((h, i) => S.pl[i].dead = h); gameOver(); return; }
     S.pl.forEach((p, i) => {
       if (!hs[i]) return;
-      if (p.sprint) { p.trail.push({ x: p.body[0].x, y: p.body[0].y, b: performance.now() }); if (p.trail.length > 14) p.trail.shift(); }
+      if (p.sprint) { p.trail.push({ x: p.body[0].x, y: p.body[0].y, L: p.body[0].L || 0, b: performance.now() }); if (p.trail.length > 14) p.trail.shift(); }
       p.body.unshift(hs[i]);
       if (eat[i] >= 0) {
         if (now - p.streakAt > K.TUNE.comboWindow) p.streak = 0;
@@ -466,7 +504,7 @@ window.Snake = window.Snake || {};
       if (i === 0) { S.rec.push(hs[i].x, hs[i].y); S.myMoves++; }   // 幽灵录制：p0 每步头格
     });
     if (S.gold) {   // 金苹果拾取：+3 分 +30 能量，不增长、不影响连击（两蛇同 tick 踩上则先手判给 p0）
-      const gi = hs.findIndex(h => h && h.x === S.gold.x && h.y === S.gold.y);
+      const gi = hs.findIndex(h => h && !h.bad && h.x === S.gold.x && h.y === S.gold.y && (h.L || 0) === (S.gold.L || 0));
       if (gi >= 0) {
         const p = S.pl[gi];
         p.score += K.TUNE.goldScore; if (!p.ai) S.stats.gold++;
@@ -807,6 +845,11 @@ window.Snake = window.Snake || {};
         }
         const a = T.at(x, y) || [];
         for (const l of a) if (isWalk(l) && l.h !== fromH && Math.abs(l.h - fromH) <= 1) out.push({ x, y, L: l.h, cost: 1, portal: false });
+        const cur2 = T.layerAt(x, y, fromH);
+        if (cur2 && cur2.kind === 'portal' && cur2.portal) {   // 传送门＝层图上的双向边（规格 §3.4），不是瞬移特判
+          const pe = T.portalTo(x, y, cur2.portal);
+          if (pe) out.push({ x: pe.x, y: pe.y, L: pe.L, cost: 1, portal: true });
+        }
         return out;
       },
       /* 层图 BFS：从 (x,y,L) 出发，返回 Map(key → 距离)；pred 可选，用于过滤节点 */
@@ -1272,7 +1315,7 @@ window.Snake = window.Snake || {};
   }
   const pal = () => Snake.theme.current.canvas;
   // 屏幕坐标：优先用渲染层的相机+抬升投影（远征才有），渲染层还没加载时退回 core 的 K.P
-  const at = (x, y) => (Snake.Render && Snake.Render.toScreen) ? Snake.Render.toScreen(x, y) :
+  const at = (x, y, L) => (Snake.Render && Snake.Render.toScreen) ? Snake.Render.toScreen(x, y, L) :
     (() => { const [sx, sy] = K.P(x, y); return [sx, sy + K.HH - 6]; })();
   function scatter(cx, cy, n, cols, up, spd) { // 中心散射：up 越大越向上，spd 为速度基数
     for (let i = 0; i < n; i++) {
@@ -1282,17 +1325,17 @@ window.Snake = window.Snake || {};
   }
   /* ---------- 事件 → 效果（lowFx 降级表见 spec §2.2） ---------- */
   bus.on('eat', e => { // 吃食爆炸：food+spark 色；金苹果金色大爆；lowFx 减半
-    const c = pal(), [cx, cy] = at(e.x, e.y);
+    const c = pal(), [cx, cy] = at(e.x, e.y, e.L);
     if (e.gold) { scatter(cx, cy, S.lowFx ? 10 : 22, ['#F2B33D', '#F7D070', '#BA7517', '#ffffff'], 90, 80); return; }
     scatter(cx, cy, S.lowFx ? 6 : 12, e.pk ? ['#ffffff', '#cbd5e1', '#94a3b8'] : [c.food, K.shades(c.food)[0], c.spark], 60, 55);
   });
   bus.on('goldSpawn', e => { // 金苹果登场微光
-    const [cx, cy] = at(e.x, e.y);
+    const [cx, cy] = at(e.x, e.y, e.L);
     scatter(cx, cy, S.lowFx ? 3 : 7, ['#F2B33D', '#F7D070'], 30, 35);
   });
   bus.on('crash', e => { // 撞击火花：lowFx 减半
     const c = pal(), cols = [c.spark, '#ffffff', K.shades(c.spark)[2]];
-    (e.heads || []).forEach(h => { const [cx, cy] = at(h.x, h.y); scatter(cx, cy, S.lowFx ? 10 : 20, cols, 90, 75); });
+    (e.heads || []).forEach(h => { const [cx, cy] = at(h.x, h.y, h.L); scatter(cx, cy, S.lowFx ? 10 : 20, cols, 90, 75); });
   });
   bus.on('win', () => { // 对战获胜烟花：3 轮 × 14 粒；lowFx 1 轮
     const c = pal(), cols = [c.spark, K.shades(c.spark)[0], K.shades(c.spark)[2], c.food, K.shades(c.food)[0]];
@@ -1308,7 +1351,7 @@ window.Snake = window.Snake || {};
       acc[i] -= .05;
       const t = p.body[p.body.length - 1];
       if (!t) return;
-      const [cx, cy] = at(t.x, t.y);
+      const [cx, cy] = at(t.x, t.y, t.L);
       spawn({ x: cx + (Math.random() - .5) * 4, y: cy, vx: (Math.random() - .5) * 10, vy: -6 - Math.random() * 12, life: .3, size: 2, col: pal().spark, g: 20, spin: 0 });
     }
   }
@@ -1577,7 +1620,8 @@ window.Snake = window.Snake || {};
   /* ---------- 地形块（Stage 1 灰模：墙 / 高台 / 桥面，参与同一套深度排序） ---------- */
   const BLK = 9;                                    // 每层高度（px）
   const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（灰模，与皮肤无关）
-  const liftOf = (x, y) => S.T ? ((S.T.topWalk(x, y) || { h: 0 }).h) * BLK : 0;   // 实体站在高台上的抬升
+  const liftOf = (x, y) => S.T ? ((S.T.topWalk(x, y) || { h: 0 }).h) * BLK : 0;   // 该格「最高可走层」的抬升（食物/金苹果落点按此层）
+  const liftAt = (x, y, L) => S.T ? (L || 0) * BLK : 0;   // 实体按自己所在层的层高抬升（规格 §3.2：层号参与碰撞与渲染）
   const blkTop = (x, y) => {   // 该格「地块」的顶面高度（px）：平地 0；墙/高台/桥面取最高层
     const ls = S.T && S.T.at(x, y); if (!ls) return 0;
     let m = 0;
@@ -1591,7 +1635,7 @@ window.Snake = window.Snake || {};
     // 挡在蛇前面的高地形靠近时半透明：别把蛇和地图糊住（用户反馈：墙体遮住地图）
     let al = 1;
     const hd = S.pl[0] && S.pl[0].body[0];
-    if (hd && top > liftOf(hd.x, hd.y) + 2 && (o.x + o.y) > (hd.x + hd.y) &&
+    if (hd && top > liftAt(hd.x, hd.y, hd.L) + 2 && (o.x + o.y) > (hd.x + hd.y) &&
         Math.abs(o.x - hd.x) + Math.abs(o.y - hd.y) <= 3) al = .34;
     if (al < 1) ctx.globalAlpha = al;
     if (t.kind === 'deck') {   // 桥面：地面投影 + 两根斜柱（简报 Q5）
@@ -1637,7 +1681,7 @@ window.Snake = window.Snake || {};
     const from = j < p.body.length - 1 ? p.body[j + 1] : (p.grew ? cur : (p.tailFrom || cur));   // 中段来自 body[j+1]；生长帧尾段原地，否则来自让出的旧尾格
     const e = a <= 0 ? 0 : a >= 1 ? 1 : ease(a);
     out.x = from.x + (cur.x - from.x) * e; out.y = from.y + (cur.y - from.y) * e;
-    const zf = liftOf(from.x, from.y), zc = liftOf(cur.x, cur.y);
+    const zf = liftAt(from.x, from.y, from.L), zc = liftAt(cur.x, cur.y, cur.L);
     out.z = zf + (zc - zf) * e;   // 高度按同一条曲线插值：蛇是「爬」上台面，不是整条弹上去（用户反馈）
     return out;
   }
@@ -1651,7 +1695,7 @@ window.Snake = window.Snake || {};
   const TR = [];                          // 光轨屏坐标缓冲（逐帧复用）
   function streak(p, now, hp) { // 冲刺光轨（头点用插值坐标）
     const n0 = p.trail.length;
-    for (let q = 0; q < n0; q++) { const s = p.trail[q]; if (!TR[q]) TR[q] = [0, 0, 0]; TR[q][0] = PX(s.x, s.y); TR[q][1] = PY(s.x, s.y) + K.HH - 6 - liftOf(s.x, s.y); TR[q][2] = 1 - (now - s.b) / 500; }
+    for (let q = 0; q < n0; q++) { const s = p.trail[q]; if (!TR[q]) TR[q] = [0, 0, 0]; TR[q][0] = PX(s.x, s.y); TR[q][1] = PY(s.x, s.y) + K.HH - 6 - liftAt(s.x, s.y, s.L); TR[q][2] = 1 - (now - s.b) / 500; }
     if (p.sprint) { if (!TR[n0]) TR[n0] = [0, 0, 0]; TR[n0][0] = PX(hp.x, hp.y); TR[n0][1] = PY(hp.x, hp.y) + K.HH - 6 - (hp.z || 0); TR[n0][2] = 1; }
     const n = n0 + (p.sprint ? 1 : 0);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -1830,7 +1874,7 @@ window.Snake = window.Snake || {};
       }
     }
     let ic = 0;   // 画家算法排序表：对象池复用，逐帧零分配
-    const pushItem = (x, y, i, j, n, head, dead, food, gold, terr, zb) => { let o = items[ic]; if (!o) o = items[ic] = {}; o.x = x; o.y = y; o.i = i; o.j = j; o.n = n; o.head = head; o.dead = dead; o.food = food; o.gold = gold; o.terr = terr; o.zb = zb; ic++; };
+    const pushItem = (x, y, i, j, n, head, dead, food, gold, terr, zb, lyr) => { let o = items[ic]; if (!o) o = items[ic] = {}; o.x = x; o.y = y; o.i = i; o.j = j; o.n = n; o.head = head; o.dead = dead; o.food = food; o.gold = gold; o.terr = terr; o.zb = zb; o.lyr = terr ? terr.lyr : (lyr || 0); ic++; };
     if (S.T) {   // 远征：地形块也进同一套深度排序（只画不可走层或 h>0 的层；平地不画块）
       const vb = viewBounds(ITEM_MARGIN);
       for (let y = vb.y0; y <= vb.y1; y++) for (let x = vb.x0; x <= vb.x1; x++) {
@@ -1844,16 +1888,16 @@ window.Snake = window.Snake || {};
         }
       }
     }
-    S.pl.forEach((p, i) => PTS[i].forEach((s, j) => pushItem(s.x, s.y, i, j, p.body.length, j === 0, p.dead, false, false, null, s.z || 0)));
+    S.pl.forEach((p, i) => PTS[i].forEach((s, j) => pushItem(s.x, s.y, i, j, p.body.length, j === 0, p.dead, false, false, null, s.z || 0, p.body[j] ? (p.body[j].L || 0) : 0)));
     S.foods.forEach(f => pushItem(f.x, f.y, 0, 0, 0, false, false, true, false, null, liftOf(f.x, f.y)));
     if (S.gold) pushItem(S.gold.x, S.gold.y, 0, 0, 0, false, false, false, true, null, liftOf(S.gold.x, S.gold.y));
     items.length = ic;
-    items.sort((a, b) => (a.x + a.y) - (b.x + b.y) || (a.terr ? a.terr.lyr : 0) - (b.terr ? b.terr.lyr : 0) || (a.terr ? 0 : 1) - (b.terr ? 0 : 1)); // 画家算法：后→前；同格地形先画、低层先画（规格 §4 深度键）
+    items.sort((a, b) => (a.x + a.y) - (b.x + b.y) || (a.lyr || 0) - (b.lyr || 0) || (a.terr ? 0 : 1) - (b.terr ? 0 : 1)); // 画家算法：后→前；同格低层先画、地形先画（规格 §4 深度键：x+y → layer → 类型）
     let occl = false;   // 有高地形挡在蛇头前面：最后补一层半透明轮廓（规格 §4）
     const hd0 = S.pl[0] && S.pl[0].body[0];
     for (const o of items) {
       if (o.terr) {
-        if (hd0 && !occl && o.terr.h * BLK > liftOf(hd0.x, hd0.y) + 2 && (o.x + o.y) > (hd0.x + hd0.y) &&
+        if (hd0 && !occl && o.terr.h * BLK > liftAt(hd0.x, hd0.y, hd0.L) + 2 && (o.x + o.y) > (hd0.x + hd0.y) &&
           Math.abs(o.x - hd0.x) + Math.abs(o.y - hd0.y) <= 2) occl = true;
         drawTerr(o); continue;   // 地形块（远征）：墙/高台/桥面，按层高抬升
       }
@@ -1939,7 +1983,7 @@ window.Snake = window.Snake || {};
     }
     requestAnimationFrame(frame);
   }
-  const toScreen = (x, y) => [PX(x, y), PY(x, y) + K.HH - 6 + liftOf(Math.round(x), Math.round(y))];   // 给粒子层用：带相机与抬升
+  const toScreen = (x, y, L) => [PX(x, y), PY(x, y) + K.HH - 6 + (L === undefined ? liftOf(Math.round(x), Math.round(y)) : liftAt(x, y, L))];   // 给粒子层用：带相机与抬升（给了层号就按层，否则按该格最高可走层）
   Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: applyCanvasSize, ease, segPos, toScreen };
 })();
 </script>

@@ -17,7 +17,7 @@ window.Snake = window.Snake || {};
   }
   const pal = () => Snake.theme.current.canvas;
   // 屏幕坐标：优先用渲染层的相机+抬升投影（远征才有），渲染层还没加载时退回 core 的 K.P
-  const at = (x, y) => (Snake.Render && Snake.Render.toScreen) ? Snake.Render.toScreen(x, y) :
+  const at = (x, y, L) => (Snake.Render && Snake.Render.toScreen) ? Snake.Render.toScreen(x, y, L) :
     (() => { const [sx, sy] = K.P(x, y); return [sx, sy + K.HH - 6]; })();
   function scatter(cx, cy, n, cols, up, spd) { // 中心散射：up 越大越向上，spd 为速度基数
     for (let i = 0; i < n; i++) {
@@ -27,17 +27,17 @@ window.Snake = window.Snake || {};
   }
   /* ---------- 事件 → 效果（lowFx 降级表见 spec §2.2） ---------- */
   bus.on('eat', e => { // 吃食爆炸：food+spark 色；金苹果金色大爆；lowFx 减半
-    const c = pal(), [cx, cy] = at(e.x, e.y);
+    const c = pal(), [cx, cy] = at(e.x, e.y, e.L);
     if (e.gold) { scatter(cx, cy, S.lowFx ? 10 : 22, ['#F2B33D', '#F7D070', '#BA7517', '#ffffff'], 90, 80); return; }
     scatter(cx, cy, S.lowFx ? 6 : 12, e.pk ? ['#ffffff', '#cbd5e1', '#94a3b8'] : [c.food, K.shades(c.food)[0], c.spark], 60, 55);
   });
   bus.on('goldSpawn', e => { // 金苹果登场微光
-    const [cx, cy] = at(e.x, e.y);
+    const [cx, cy] = at(e.x, e.y, e.L);
     scatter(cx, cy, S.lowFx ? 3 : 7, ['#F2B33D', '#F7D070'], 30, 35);
   });
   bus.on('crash', e => { // 撞击火花：lowFx 减半
     const c = pal(), cols = [c.spark, '#ffffff', K.shades(c.spark)[2]];
-    (e.heads || []).forEach(h => { const [cx, cy] = at(h.x, h.y); scatter(cx, cy, S.lowFx ? 10 : 20, cols, 90, 75); });
+    (e.heads || []).forEach(h => { const [cx, cy] = at(h.x, h.y, h.L); scatter(cx, cy, S.lowFx ? 10 : 20, cols, 90, 75); });
   });
   bus.on('win', () => { // 对战获胜烟花：3 轮 × 14 粒；lowFx 1 轮
     const c = pal(), cols = [c.spark, K.shades(c.spark)[0], K.shades(c.spark)[2], c.food, K.shades(c.food)[0]];
@@ -53,7 +53,7 @@ window.Snake = window.Snake || {};
       acc[i] -= .05;
       const t = p.body[p.body.length - 1];
       if (!t) return;
-      const [cx, cy] = at(t.x, t.y);
+      const [cx, cy] = at(t.x, t.y, t.L);
       spawn({ x: cx + (Math.random() - .5) * 4, y: cy, vx: (Math.random() - .5) * 10, vy: -6 - Math.random() * 12, life: .3, size: 2, col: pal().spark, g: 20, spin: 0 });
     }
   }

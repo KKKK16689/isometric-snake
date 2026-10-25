@@ -240,7 +240,8 @@ window.Snake = window.Snake || {};
   /* ---------- 地形块（Stage 1 灰模：墙 / 高台 / 桥面，参与同一套深度排序） ---------- */
   const BLK = 9;                                    // 每层高度（px）
   const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（灰模，与皮肤无关）
-  const liftOf = (x, y) => S.T ? ((S.T.topWalk(x, y) || { h: 0 }).h) * BLK : 0;   // 实体站在高台上的抬升
+  const liftOf = (x, y) => S.T ? ((S.T.topWalk(x, y) || { h: 0 }).h) * BLK : 0;   // 该格「最高可走层」的抬升（食物/金苹果落点按此层）
+  const liftAt = (x, y, L) => S.T ? (L || 0) * BLK : 0;   // 实体按自己所在层的层高抬升（规格 §3.2：层号参与碰撞与渲染）
   const blkTop = (x, y) => {   // 该格「地块」的顶面高度（px）：平地 0；墙/高台/桥面取最高层
     const ls = S.T && S.T.at(x, y); if (!ls) return 0;
     let m = 0;
@@ -254,7 +255,7 @@ window.Snake = window.Snake || {};
     // 挡在蛇前面的高地形靠近时半透明：别把蛇和地图糊住（用户反馈：墙体遮住地图）
     let al = 1;
     const hd = S.pl[0] && S.pl[0].body[0];
-    if (hd && top > liftOf(hd.x, hd.y) + 2 && (o.x + o.y) > (hd.x + hd.y) &&
+    if (hd && top > liftAt(hd.x, hd.y, hd.L) + 2 && (o.x + o.y) > (hd.x + hd.y) &&
         Math.abs(o.x - hd.x) + Math.abs(o.y - hd.y) <= 3) al = .34;
     if (al < 1) ctx.globalAlpha = al;
     if (t.kind === 'deck') {   // 桥面：地面投影 + 两根斜柱（简报 Q5）
@@ -300,7 +301,7 @@ window.Snake = window.Snake || {};
     const from = j < p.body.length - 1 ? p.body[j + 1] : (p.grew ? cur : (p.tailFrom || cur));   // 中段来自 body[j+1]；生长帧尾段原地，否则来自让出的旧尾格
     const e = a <= 0 ? 0 : a >= 1 ? 1 : ease(a);
     out.x = from.x + (cur.x - from.x) * e; out.y = from.y + (cur.y - from.y) * e;
-    const zf = liftOf(from.x, from.y), zc = liftOf(cur.x, cur.y);
+    const zf = liftAt(from.x, from.y, from.L), zc = liftAt(cur.x, cur.y, cur.L);
     out.z = zf + (zc - zf) * e;   // 高度按同一条曲线插值：蛇是「爬」上台面，不是整条弹上去（用户反馈）
     return out;
   }
@@ -314,7 +315,7 @@ window.Snake = window.Snake || {};
   const TR = [];                          // 光轨屏坐标缓冲（逐帧复用）
   function streak(p, now, hp) { // 冲刺光轨（头点用插值坐标）
     const n0 = p.trail.length;
-    for (let q = 0; q < n0; q++) { const s = p.trail[q]; if (!TR[q]) TR[q] = [0, 0, 0]; TR[q][0] = PX(s.x, s.y); TR[q][1] = PY(s.x, s.y) + K.HH - 6 - liftOf(s.x, s.y); TR[q][2] = 1 - (now - s.b) / 500; }
+    for (let q = 0; q < n0; q++) { const s = p.trail[q]; if (!TR[q]) TR[q] = [0, 0, 0]; TR[q][0] = PX(s.x, s.y); TR[q][1] = PY(s.x, s.y) + K.HH - 6 - liftAt(s.x, s.y, s.L); TR[q][2] = 1 - (now - s.b) / 500; }
     if (p.sprint) { if (!TR[n0]) TR[n0] = [0, 0, 0]; TR[n0][0] = PX(hp.x, hp.y); TR[n0][1] = PY(hp.x, hp.y) + K.HH - 6 - (hp.z || 0); TR[n0][2] = 1; }
     const n = n0 + (p.sprint ? 1 : 0);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -493,7 +494,7 @@ window.Snake = window.Snake || {};
       }
     }
     let ic = 0;   // 画家算法排序表：对象池复用，逐帧零分配
-    const pushItem = (x, y, i, j, n, head, dead, food, gold, terr, zb) => { let o = items[ic]; if (!o) o = items[ic] = {}; o.x = x; o.y = y; o.i = i; o.j = j; o.n = n; o.head = head; o.dead = dead; o.food = food; o.gold = gold; o.terr = terr; o.zb = zb; ic++; };
+    const pushItem = (x, y, i, j, n, head, dead, food, gold, terr, zb, lyr) => { let o = items[ic]; if (!o) o = items[ic] = {}; o.x = x; o.y = y; o.i = i; o.j = j; o.n = n; o.head = head; o.dead = dead; o.food = food; o.gold = gold; o.terr = terr; o.zb = zb; o.lyr = terr ? terr.lyr : (lyr || 0); ic++; };
     if (S.T) {   // 远征：地形块也进同一套深度排序（只画不可走层或 h>0 的层；平地不画块）
       const vb = viewBounds(ITEM_MARGIN);
       for (let y = vb.y0; y <= vb.y1; y++) for (let x = vb.x0; x <= vb.x1; x++) {
@@ -507,16 +508,16 @@ window.Snake = window.Snake || {};
         }
       }
     }
-    S.pl.forEach((p, i) => PTS[i].forEach((s, j) => pushItem(s.x, s.y, i, j, p.body.length, j === 0, p.dead, false, false, null, s.z || 0)));
+    S.pl.forEach((p, i) => PTS[i].forEach((s, j) => pushItem(s.x, s.y, i, j, p.body.length, j === 0, p.dead, false, false, null, s.z || 0, p.body[j] ? (p.body[j].L || 0) : 0)));
     S.foods.forEach(f => pushItem(f.x, f.y, 0, 0, 0, false, false, true, false, null, liftOf(f.x, f.y)));
     if (S.gold) pushItem(S.gold.x, S.gold.y, 0, 0, 0, false, false, false, true, null, liftOf(S.gold.x, S.gold.y));
     items.length = ic;
-    items.sort((a, b) => (a.x + a.y) - (b.x + b.y) || (a.terr ? a.terr.lyr : 0) - (b.terr ? b.terr.lyr : 0) || (a.terr ? 0 : 1) - (b.terr ? 0 : 1)); // 画家算法：后→前；同格地形先画、低层先画（规格 §4 深度键）
+    items.sort((a, b) => (a.x + a.y) - (b.x + b.y) || (a.lyr || 0) - (b.lyr || 0) || (a.terr ? 0 : 1) - (b.terr ? 0 : 1)); // 画家算法：后→前；同格低层先画、地形先画（规格 §4 深度键：x+y → layer → 类型）
     let occl = false;   // 有高地形挡在蛇头前面：最后补一层半透明轮廓（规格 §4）
     const hd0 = S.pl[0] && S.pl[0].body[0];
     for (const o of items) {
       if (o.terr) {
-        if (hd0 && !occl && o.terr.h * BLK > liftOf(hd0.x, hd0.y) + 2 && (o.x + o.y) > (hd0.x + hd0.y) &&
+        if (hd0 && !occl && o.terr.h * BLK > liftAt(hd0.x, hd0.y, hd0.L) + 2 && (o.x + o.y) > (hd0.x + hd0.y) &&
           Math.abs(o.x - hd0.x) + Math.abs(o.y - hd0.y) <= 2) occl = true;
         drawTerr(o); continue;   // 地形块（远征）：墙/高台/桥面，按层高抬升
       }
@@ -602,6 +603,6 @@ window.Snake = window.Snake || {};
     }
     requestAnimationFrame(frame);
   }
-  const toScreen = (x, y) => [PX(x, y), PY(x, y) + K.HH - 6 + liftOf(Math.round(x), Math.round(y))];   // 给粒子层用：带相机与抬升
+  const toScreen = (x, y, L) => [PX(x, y), PY(x, y) + K.HH - 6 + (L === undefined ? liftOf(Math.round(x), Math.round(y)) : liftAt(x, y, L))];   // 给粒子层用：带相机与抬升（给了层号就按层，否则按该格最高可走层）
   Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: applyCanvasSize, ease, segPos, toScreen };
 })();

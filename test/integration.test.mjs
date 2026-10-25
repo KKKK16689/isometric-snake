@@ -751,7 +751,7 @@ test('集成：上台面是「爬」上去的——插值高度沿同一条曲�
   const low = (T.topWalk(3, 4) || { h: 0 }).h, high = (T.topWalk(4, 4) || { h: 0 }).h;
   assert.equal(low, 1, '测试图 (3,4) 应是 h1 台阶');
   assert.equal(high, 2, '测试图 (4,4) 应是 h2 台面');
-  const p = { body: [{ x: 4, y: 4 }, { x: 3, y: 4 }], moveT: 0, moveP: 100, grew: false, tailFrom: null };
+  const p = { body: [{ x: 4, y: 4, L: high }, { x: 3, y: 4, L: low }], moveT: 0, moveP: 100, grew: false, tailFrom: null };   // Stage 2：每节带层号 L
   const out = {}, zAt = t => { Snake.Render.segPos(p, 0, t, out); return out.z; };
   assert.ok(Math.abs(zAt(0) - 9) < .01, '刚进格必须还站在下层高度 9px，实际 ' + zAt(0));
   const mid = zAt(50);
@@ -792,12 +792,12 @@ test('集成：远征渲染成本——地形块每帧绘制量有预算，静�
   assert.equal(short.length, 0, '静态层必须完整盖住视口（短了就露背景）：' + short.length + ' 帧露白');
   // 相机平滑：每帧位移远小于一格（一格 = 15 逻辑 px）；旧实现是整格跳，这正是「一闪一闪」的根源
   let maxD = 0, moves = 0, prev = H.S.camCX;
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 240; i++) {                    // 跑久一点：蛇在死区内时相机本来就不动，样本太短会误判
     autoPlay(H, 1);
     const d = Math.abs(H.S.camCX - prev); prev = H.S.camCX;
     if (d > .01) moves++;
     if (d > maxD) maxD = d;
   }
   assert.ok(maxD < 8, '相机每帧位移应远小于一格（整格跳 = 15）：' + maxD.toFixed(2));
-  assert.ok(moves >= 8, '相机应逐帧连续移动，而不是隔一段才跳一次：' + moves + '/40');
+  assert.ok(moves >= 10, '相机应逐帧连续移动，而不是隔一段才跳一次：' + moves + '/240');
 });
