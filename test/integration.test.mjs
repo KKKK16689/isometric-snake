@@ -509,7 +509,7 @@ test('Stage 0：backing store = 实测显示尺寸 × dprEff（像素预算 / �
 });
 
 /* ---------- 11. 自适应画质：帧时间连续偏慢降背店，平稳不误降，富余且过冷却后试探回升 ---------- */
-test('自适应画质：连续掉帧自动降分辨率（下限 1:1），平稳不误降，富余后试探回升', () => {
+test('自适应画质：连续掉帧自动降分辨率（一般不低于 1:1，严重掉帧可软到 0.75 倍换流畅），平稳不误降，富余后试探回升', () => {
   const H = makeDom({ main: { w: 1024, h: 768 }, dpr: 2 }); boot(H);
   const w0 = H.cv.width;
   assert.ok(w0 > 0, '初始背店应已建立');
@@ -517,12 +517,13 @@ test('自适应画质：连续掉帧自动降分辨率（下限 1:1），平稳�
   assert.equal(H.cv.width, w0, '平稳 60fps 不应降档');
   for (let i = 0; i < 160; i++) H.drive(1, 40);    // 连续 40ms 大帧（≈25fps）：一个决策窗口后应降档
   assert.ok(H.cv.width < w0, '连续掉帧后应自动降分辨率');
-  for (let i = 0; i < 180; i++) H.drive(1, 40);    // 继续掉帧：继续降，但不会低于 1 设备像素 = 1 CSS 像素
+  for (let i = 0; i < 300; i++) H.drive(1, 40);    // 持续严重掉帧（漏帧率≈100% > 35%）：可一路降到 0.75 倍 CSS
   const r = H.cv.getBoundingClientRect();
-  assert.ok(H.cv.width >= Math.round(r.width) - 1, `分辨率不应低于 1:1（${H.cv.width} vs ${r.width}）`);
-  // 帧时间富余 + 越过试升冷却 → 升回一档
+  assert.ok(H.cv.width >= Math.round(r.width * 0.75) - 1, `软渲染也不应低于 0.75 倍 CSS（${H.cv.width} vs ${r.width}）`);
+  assert.ok(H.cv.width <= Math.round(r.width * 1.5), `严重掉帧应已明显降档（${H.cv.width}）`);
+  // 帧时间富余 + 越过试升冷却 → 升回一档，且清晰度地板回到 1:1 以上
   H.sb.__t += 20000; H.drive(1, 40);
-  H.drive(260, 6);                                 // 6ms 富余帧
+  H.drive(300, 6);                                 // 6ms 富余帧
   const r2 = H.cv.getBoundingClientRect();
   assert.ok(H.cv.width > Math.round(r2.width) + 1, `富余帧 + 冷却结束后应试探升回（${H.cv.width} vs 1:1=${r2.width}）`);
 });
