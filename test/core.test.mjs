@@ -547,3 +547,23 @@ test('远征 AI 批量对局：层图 AI 在真实地图上不撞地形、不卡
   }
   console.log('      远征 AI 对局：' + lines.join('  |  '));
 });
+
+/* ---------- 传送门不再「像陷阱」：传到对端后那一拍不许再传（旧行为会立刻弹回、身体叠在自己头上 → 判负） ---------- */
+test('传送门冷却：踩门传到对端后不会立刻弹回，也不会自己把自己撞死', () => {
+  const sb = expSB(); const S = sb.Snake.S, p = S.pl[0];
+  S.state = 'playing';
+  p.body = [{ x: 2, y: 2, L: 0 }, { x: 2, y: 3, L: 0 }, { x: 2, y: 4, L: 0 }];   // 站在 P(2,2) 门格上
+  p.dir = [0, 1]; p.queue.length = 0; p.portCool = false;
+  moveOnce(sb, p);
+  assert.equal(S.state, 'playing', '踩传送门不该直接判负，状态=' + S.state);
+  const h1 = p.body[0];
+  assert.ok(h1.x === 21 && h1.y === 3, '这一步应当送到对端 p(21,3)，实际 ' + JSON.stringify([h1.x, h1.y]));
+  assert.equal(p.portCool, true, '传送到达后应当置冷却');
+  // 冷却期内站在对端门格上：再走一步不该被传回原门（回归用例：旧代码会弹回并自撞判负）
+  p.body = [{ x: 21, y: 3, L: 0 }, { x: 21, y: 2, L: 0 }, { x: 21, y: 1, L: 0 }];
+  p.dir = [-1, 0]; p.queue.length = 0;
+  moveOnce(sb, p);
+  const h2 = p.body[0];
+  assert.ok(!(h2.x === 2 && h2.y === 2), '冷却期内不该立刻弹回原门，实际 ' + JSON.stringify([h2.x, h2.y]));
+  assert.equal(p.portCool, false, '走完正常一步后应当解除冷却');
+});

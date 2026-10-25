@@ -473,8 +473,9 @@ window.Snake = window.Snake || {};
       if (p.queue.length) p.dir = p.queue.shift();
       const h0 = p.body[0], L0 = h0.L || 0;
       if (!S.T) return { x: h0.x + p.dir[0], y: h0.y + p.dir[1], L: 0, bad: solid(h0.x + p.dir[0], h0.y + p.dir[1]) };
-      const pe = portalEdge(h0.x, h0.y, L0);                       // §3.4：踩在传送门上 → 本步走传送门边
-      if (pe) { bus.emit('port', { x: h0.x, y: h0.y, L: L0, tx: pe.x, ty: pe.y, tL: pe.L || 0, i }); return pe; }   // 两端都要有光效，别让人「莫名其妙被传走」
+      const pe = p.portCool ? null : portalEdge(h0.x, h0.y, L0);   // §3.4：踩在传送门上 → 本步走传送门边
+      if (pe) { p.portCool = true; bus.emit('port', { x: h0.x, y: h0.y, L: L0, tx: pe.x, ty: pe.y, tL: pe.L || 0, i }); return pe; }   // 两端都要有光效，别让人「莫名其妙被传走」
+      p.portCool = false;                                         // 刚从传送门出来那一拍不许再传：否则会在两端来回弹、身体叠在自己头上把自己撞死（用户反馈「一到传送门就死」）
       const nx = h0.x + p.dir[0], ny = h0.y + p.dir[1], pk = S.T.pick(nx, ny, L0);   // §3.3：按层选落点
       if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
       return { x: nx, y: ny, L: pk.h };
@@ -1424,7 +1425,7 @@ window.Snake = window.Snake || {};
      几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
   const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: .75 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
-  const BUILD = 'stage3.4';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
+  const BUILD = 'stage3.5';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
   const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
     const m = /(^|[?&])q=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
@@ -2056,7 +2057,7 @@ window.Snake = window.Snake || {};
   /* 地形（3D）适配：节点 = 层图节点 (x,y,L)。经典模式一律走 cellKey + 四邻 + 棋盘边界，
      保证 2.0 的 AI 行为与手感一字不变（经典 AI 行为锁就是靠这个前提交付的）。 */
   const key = (x, y, L) => S.T ? S.T.key(x, y, L || 0) : cellKey(x, y);
-  const nbrs = (x, y, L) => S.T ? S.T.neighbors(x, y, L || 0) : DLIST.map(d => ({ x: x + d[0], y: y + d[1], L: 0, cost: 1, portal: false }));   // 统一返回 {x,y,L} 对象（地形层图本来就是对象）
+  const nbrs = (x, y, L) => S.T ? S.T.neighbors(x, y, L || 0).filter(n => !n.portal) : DLIST.map(d => ({ x: x + d[0], y: y + d[1], L: 0, cost: 1, portal: false }));   // 统一返回 {x,y,L} 对象（地形层图本来就是对象）；传送门那条边不给 AI 选——「站上去下一步自动传送」不是一次可选移动，若当成移动会把「对端坐标−当前坐标」当方向向量，直接把自己送进墙里
   const nodes = () => {   // 遍历全集：经典＝棋盘格（y 外 x 内，与 2.0 的补标记顺序一致）；地形＝层图可走节点
     if (S.T) return S.T.walkables();
     const a = []; for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) a.push({ x, y, L: 0 });

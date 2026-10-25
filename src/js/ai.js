@@ -14,7 +14,7 @@ window.Snake = window.Snake || {};
   /* 地形（3D）适配：节点 = 层图节点 (x,y,L)。经典模式一律走 cellKey + 四邻 + 棋盘边界，
      保证 2.0 的 AI 行为与手感一字不变（经典 AI 行为锁就是靠这个前提交付的）。 */
   const key = (x, y, L) => S.T ? S.T.key(x, y, L || 0) : cellKey(x, y);
-  const nbrs = (x, y, L) => S.T ? S.T.neighbors(x, y, L || 0) : DLIST.map(d => ({ x: x + d[0], y: y + d[1], L: 0, cost: 1, portal: false }));   // 统一返回 {x,y,L} 对象（地形层图本来就是对象）
+  const nbrs = (x, y, L) => S.T ? S.T.neighbors(x, y, L || 0).filter(n => !n.portal) : DLIST.map(d => ({ x: x + d[0], y: y + d[1], L: 0, cost: 1, portal: false }));   // 统一返回 {x,y,L} 对象（地形层图本来就是对象）；传送门那条边不给 AI 选——「站上去下一步自动传送」不是一次可选移动，若当成移动会把「对端坐标−当前坐标」当方向向量，直接把自己送进墙里
   const nodes = () => {   // 遍历全集：经典＝棋盘格（y 外 x 内，与 2.0 的补标记顺序一致）；地形＝层图可走节点
     if (S.T) return S.T.walkables();
     const a = []; for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) a.push({ x, y, L: 0 });
