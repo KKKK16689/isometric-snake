@@ -88,3 +88,7 @@ body.im:not(.pk) .sw[data-p="1"],body.im:not(.pk) .cmp[data-p="1"],body.im:not(.
 body.im #toast{bottom:44px} /* 沉浸：toast 抬到底部 HUD 之上 */
 @media (max-width:899px){body.im .th{top:auto;bottom:36px}body.im #toast{bottom:70px}} /* 窄屏沉浸：工具栏可能换行，主题点移到底部居中（HUD 之上），toast 再抬一级 */
 @media (orientation:portrait){body.pk:not(.im){overflow:auto}body.pk:not(.im) main{height:auto;display:block;padding:16px}body.pk:not(.im) .hud,body.pk:not(.im) .mode{position:static;transform:none;margin:0 0 8px}body.pk:not(.im) .mode button{font-size:14px;padding:6px 16px}body.pk:not(.im) .stage{display:none}body.pk:not(.im) .rotate{display:block}}
+
+/* 远征小地图：HUD 一侧独立小 canvas，只在 ?mode=expedition 显示，4~8Hz 重绘（规格 §4） */
+#mm{position:fixed;left:10px;bottom:10px;width:96px;height:96px;z-index:40;display:none;border:1px solid rgba(255,255,255,.16);border-radius:8px;background:rgba(6,10,20,.55);pointer-events:none;opacity:.9}
+body.mm #mm{display:block}

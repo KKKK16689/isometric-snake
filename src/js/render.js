@@ -109,6 +109,9 @@ window.Snake = window.Snake || {};
     cv.width = Math.round(w * dprEff); cv.height = Math.round(h * dprEff);
     cssK = w / S.W; scale = dprEff * cssK;         // 逻辑 → CSS → 设备 两级比例
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    if (mmCv) {   // 小地图同样按设备像素重设背店（固定 96 CSS px 见方）
+      mmCv.width = mmCv.height = Math.round(96 * dprEff); mmCtx.setTransform(dprEff, 0, 0, dprEff, 0, 0);
+    }
     boardCache = null; vig = null; glowCache.clear();   // 缓存全部按新背店尺寸重建
   }
 
@@ -298,9 +301,45 @@ window.Snake = window.Snake || {};
     ctx.font = '14px system-ui,sans-serif'; ctx.fillText(t2, S.W / 2, S.H / 2 + 20);
     if (t3) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = '12px system-ui,sans-serif'; ctx.fillText(t3, S.W / 2, S.H / 2 + 42); }
   }
+  /* ---------- 远征小地图：HUD 一侧独立小 canvas，4~8Hz 重绘（规格 §4） ---------- */
+  const mmCv = document.getElementById('mm'), mmCtx = mmCv ? mmCv.getContext('2d') : null;
+  let mmT = 0;
+  const MM_C = { ground: '#2C3757', deck: '#54637F', water: '#16324F', portal: '#7FD4FF', food: '#F2B33D', head: '#5DCAA5', frame: 'rgba(255,255,255,.5)' };
+  function mmUpdate(t) {
+    if (!mmCtx) return;
+    const on = !!S.T && S.mode === 'expedition';
+    if (document.body.classList.contains('mm') !== on) document.body.classList.toggle('mm', on);
+    if (!on || t - mmT < 200) return;   // 4~8Hz：别每帧重绘（规格 §4）
+    mmT = t;
+    const w = 96, h = 96, cell = Math.min(w, h) / S.N;
+    mmCtx.clearRect(0, 0, w, h);
+    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) {   // 地图轮廓：最高可走层上色；水面标冷色，墙留空
+      const ls = S.T.at(x, y); if (!ls) continue;
+      let c = null, water = false;
+      for (let i = ls.length - 1; i >= 0; i--) {
+        if (ls[i].walkable) { c = ls[i].kind === 'portal' ? MM_C.portal : (ls[i].kind === 'deck' ? MM_C.deck : MM_C.ground); break; }
+        if (ls[i].kind === 'water') water = true;
+      }
+      if (!c) { if (!water) continue; c = MM_C.water; }
+      mmCtx.fillStyle = c;
+      mmCtx.fillRect(Math.round(x * cell), Math.round(y * cell), Math.max(1, Math.round(cell)), Math.max(1, Math.round(cell)));
+    }
+    const dot = Math.max(2, Math.round(cell) + 1);
+    mmCtx.fillStyle = MM_C.food;                                   // 食物
+    for (const f of S.foods) mmCtx.fillRect(Math.round(f.x * cell) - 1, Math.round(f.y * cell) - 1, dot, dot);
+    const hp = S.pl[0].body[0];                                    // 玩家
+    mmCtx.fillStyle = MM_C.head; mmCtx.fillRect(Math.round(hp.x * cell) - 1, Math.round(hp.y * cell) - 1, dot, dot);
+    const half = S.VIEW_N / 2;                                     // 视口框
+    const vx0 = Math.max(0, S.camCX - half), vy0 = Math.max(0, S.camCY - half), vx1 = Math.min(S.N, S.camCX + half), vy1 = Math.min(S.N, S.camCY + half);
+    mmCtx.strokeStyle = MM_C.frame; mmCtx.lineWidth = 1;
+    mmCtx.beginPath();
+    mmCtx.rect(Math.round(vx0 * cell) + .5, Math.round(vy0 * cell) + .5, Math.max(1, Math.round((vx1 - vx0) * cell) - 1), Math.max(1, Math.round((vy1 - vy0) * cell) - 1));
+    mmCtx.stroke();
+  }
   function draw(t) {
     if (qDirty) { qDirty = false; applyCanvasSize(); }   // 自适应画质换档：在帧首重建，避免半帧换尺寸
     camUpdate();                                         // 相机：远征跟随蛇头（经典模式恒 0）
+    mmUpdate(t);                                         // 远征小地图（内部 4~8Hz 节流；经典模式直接返回）
     ctx.clearRect(0, 0, S.W, S.H);
     if (pal.star) STARS.forEach((s, i) => { // 无星空主题（亮色）不绘星空
       ctx.fillStyle = K.rgba(pal.star, (.25 + .35 * Math.sin(t / 700 + i)).toFixed(2));
