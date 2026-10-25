@@ -626,3 +626,18 @@ test('经典模式视觉锁：90 帧绘制轨迹摘要恒定（Stage 1-5 改地�
   assert.equal(a.h, 0xa224baec, '种子 20261025 的绘制轨迹变了：' + a.h.toString(16) + '（' + a.ops + ' 条 / ' + a.n + ' 张画布）');
   assert.equal(b.h, 0x1c8c6710, '种子 7 的绘制轨迹变了：' + b.h.toString(16) + '（' + b.ops + ' 条 / ' + b.n + ' 张画布）');
 });
+
+/* ---------- 渲染成本护栏：主画布每帧绘制量在预算内；静态地板缓存必须远低于主画布（不许逐帧重画全图） ---------- */
+test('渲染成本护栏：主画布每帧绘制量有预算，静态地板缓存不逐帧重画', () => {
+  const H = makeDom({ search: '?seed=20261025', dpr: 2 });
+  boot(H); H.key('KeyW'); autoPlay(H, 60);
+  const main = H.cv._ctx._t.length;
+  const board = H.created
+    .filter(c => typeof c.getContext === 'function' && c !== H.cv && c.width === H.cv.width && c.height === H.cv.height)
+    .reduce((s, c) => s + (c._ctx ? c._ctx._t.length : 0), 0);
+  const perFrame = main / 60;
+  // 基线（seed 20261025 / 60 帧 / dpr2）：主画布 19613 条 = 326.9 条每帧；地板缓存 2211 条 = 11.3%，只重建一次
+  assert.ok(perFrame >= 150, '主画布每帧绘制量太低，可能压根没渲染：' + perFrame.toFixed(1));
+  assert.ok(perFrame <= 700, '主画布每帧绘制量超预算（Stage 1-5 别让渲染膨胀）：' + perFrame.toFixed(1));
+  assert.ok(board < main * .3, '静态地板缓存的绘制量不该接近主画布（退化成逐帧重画全图了）：board=' + board + ' main=' + main);
+});
