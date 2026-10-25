@@ -317,6 +317,59 @@ test('远征：悬崖/墙按高差阻挡，踩传送门下一步就穿到对端�
   assert.equal(pb.body[0].x, 21, '应被送到对端 (21,3)，实际 ' + pb.body[0].x + ',' + pb.body[0].y);
   assert.equal(pb.body[0].y, 3, '应被送到对端 (21,3)');
 });
+test('远征 soak：三张图连续行走，逐帧校验层规则不变量（不穿墙/水、不吃错层、食物总在最高可走层）', () => {
+  const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  for (const id of ['test-24', 'harbor-32', 'ridges-40']) {
+    const sb = load('?mode=expedition&level=' + id, false, true);
+    sb.Snake.api.reset();
+    sb.Snake.api.start();                 // ready → playing（远征开局同样要点一下才走）
+    const S = sb.Snake.S, p = S.pl[0];
+    const legal = (x, y, L) => !!S.T.pick(x, y, L);
+    const portalAt = (x, y, L) => { const l = S.T.layerAt(x, y, L); return !!(l && l.kind === 'portal'); };
+    const occupied = (x, y, L) => p.body.some((s, si) => si !== p.body.length - 1 && s.x === x && s.y === y && (s.L || 0) === L);
+    const space = (x0, y0, L) => {          // 小范围洪水填充（上限 64 格）：给候选方向估「活动空间」，别钻死胡同
+      const seen = new Set([x0 + ',' + y0]), q = [[x0, y0]]; let n = 0;
+      while (q.length && n < 64) {
+        const c = q.shift(); n++;
+        for (const d of DIRS) {
+          const nx = c[0] + d[0], ny = c[1] + d[1], k = nx + ',' + ny;
+          if (seen.has(k) || !S.T.pick(nx, ny, L) || occupied(nx, ny, L)) continue;
+          seen.add(k); q.push([nx, ny]);
+        }
+      }
+      return n;
+    };
+    let moves = 0, steps = 0;
+    while (steps++ < 2000 && S.state === 'playing' && moves < 400) {
+      const h = p.body[0], L = h.L || 0, before = h.x + ',' + h.y + ',' + L;
+      const tail = p.body[p.body.length - 1];
+      let pick = null, bestN = -1;
+      for (const d of DIRS) {
+        if (d[0] === -p.dir[0] && d[1] === -p.dir[1]) continue;               // 反向会被 turn() 忽略
+        if (portalAt(h.x, h.y, L)) { pick = d; break; }                       // 站在传送门上：随便排，规则会把蛇送到对端
+        const nx = h.x + d[0], ny = h.y + d[1];
+        if (!legal(nx, ny, L) || occupied(nx, ny, L)) continue;
+        if (tail && tail.x === nx && tail.y === ny && (tail.L || 0) === L &&
+            S.foods.some(f => f.x === nx && f.y === ny && (f.L || 0) === L)) continue;   // 吃到时尾巴不缩，别咬自己尾
+        const sc = space(nx, ny, L);
+        if (sc > bestN) { bestN = sc; pick = d; }
+      }
+      if (pick) { p.queue.length = 0; p.queue.push(pick); }
+      stepOnce(sb);
+      const h2 = p.body[0];
+      if (h2.x + ',' + h2.y + ',' + (h2.L || 0) !== before) moves++;
+      for (const s of p.body) {
+        const l = S.T.layerAt(s.x, s.y, s.L || 0);
+        assert.ok(l && l.walkable, id + '：蛇身节 (' + s.x + ',' + s.y + ',L' + (s.L || 0) + ') 不在可行走层上');
+      }
+      assert.ok(S.foods.length >= 1, id + '：食物不该消失');
+      S.foods.forEach(f => { const tw = S.T.topWalk(f.x, f.y); assert.ok(tw && (f.L || 0) === tw.h, id + '：食物不在该格最高可走层'); });
+      assert.equal(S.rec.length, 2 * S.myMoves, id + '：幽灵录制与步数失步');
+      assert.ok(S.pl.every(q => q.score >= 0 && q.energy >= 0 && q.energy <= 100), id + '：分数/能量越界');
+    }
+    assert.ok(moves >= 250, id + '：soak 应真的走起来（实际 ' + moves + ' 步，state=' + S.state + '）');
+  }
+});
 
 /* ---------- 3.0 远征：层图接管地图（Stage 1 只做墙/水硬阻挡，高差与传送见 Stage 2） ---------- */
 test('远征模式：层图接管地图——24×24、视口 18、关卡出生点、墙水阻挡、食物落在可走格、相机跟随', () => {
