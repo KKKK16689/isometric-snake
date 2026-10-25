@@ -132,7 +132,7 @@ window.Snake = window.Snake || {};
     const two = K.MODES[S.mode].players === 2;
     const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
     p.body = xs.map(x => ({ x, y })); p.dir = i ? K.DIRS.upLeft : K.DIRS.downRight; p.queue = []; p.dead = false;
-    p.moveT = 0; p.moveP = 300; p.grew = false; p.tailFrom = null; p.streakAt = 0;  // 插值/连击时钟复位
+    p.moveT = 0; p.moveTGame = 0; p.moveP = 300; p.grew = false; p.tailFrom = null; p.streakAt = 0;  // 插值/连击时钟复位
   }
   function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
     const want = K.MODES[S.mode].foods;
@@ -246,7 +246,7 @@ window.Snake = window.Snake || {};
         bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, pts: gain, i });
       }
       else p.tailFrom = p.body.pop();
-      p.grew = eat[i] >= 0; p.moveT = S.now > 0 ? S.now : now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick；moveT 用渲染时钟给插值用
+      p.grew = eat[i] >= 0; p.moveT = S.now > 0 ? S.now : now; p.moveTGame = now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick；moveT 用渲染时钟给插值用，moveTGame 留作 ?interp=legacy 对比
       if (i === 0) { S.rec.push(hs[i].x, hs[i].y); S.myMoves++; }   // 幽灵录制：p0 每步头格
     });
     if (S.gold) {   // 金苹果拾取：+3 分 +30 能量，不增长、不影响连击（两蛇同 tick 踩上则先手判给 p0）

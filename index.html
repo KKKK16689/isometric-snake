@@ -302,7 +302,7 @@ window.Snake = window.Snake || {};
     const two = K.MODES[S.mode].players === 2;
     const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
     p.body = xs.map(x => ({ x, y })); p.dir = i ? K.DIRS.upLeft : K.DIRS.downRight; p.queue = []; p.dead = false;
-    p.moveT = 0; p.moveP = 300; p.grew = false; p.tailFrom = null; p.streakAt = 0;  // 插值/连击时钟复位
+    p.moveT = 0; p.moveTGame = 0; p.moveP = 300; p.grew = false; p.tailFrom = null; p.streakAt = 0;  // 插值/连击时钟复位
   }
   function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
     const want = K.MODES[S.mode].foods;
@@ -416,7 +416,7 @@ window.Snake = window.Snake || {};
         bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, pts: gain, i });
       }
       else p.tailFrom = p.body.pop();
-      p.grew = eat[i] >= 0; p.moveT = S.now > 0 ? S.now : now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick；moveT 用渲染时钟给插值用
+      p.grew = eat[i] >= 0; p.moveT = S.now > 0 ? S.now : now; p.moveTGame = now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick；moveT 用渲染时钟给插值用，moveTGame 留作 ?interp=legacy 对比
       if (i === 0) { S.rec.push(hs[i].x, hs[i].y); S.myMoves++; }   // 幽灵录制：p0 每步头格
     });
     if (S.gold) {   // 金苹果拾取：+3 分 +30 能量，不增长、不影响连击（两蛇同 tick 踩上则先手判给 p0）
@@ -937,6 +937,11 @@ window.Snake = window.Snake || {};
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
   const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 15000, softMin: .75 };
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
+  const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
+    const m = /(^|[?&])q=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
+    const v = m ? parseFloat(m[2]) : 0;
+    return v >= .4 && v <= 1 ? v : 0;
+  })();
   let fpsT0 = 0, fpsN = 0, fpsVal = 0;
   let scale = 1;                                        // 逻辑单位 → 设备像素
   let cssK = 1, cssW = 0, cssH = 0;                     // CSS 像素 / 逻辑单位；cssW/H = 实测 CSS 尺寸（诊断读数用）
@@ -994,7 +999,8 @@ window.Snake = window.Snake || {};
     fitCanvas();                                   // 1) 先定 CSS 尺寸（沉浸 fit / 列式 100%）
     const r = cv.getBoundingClientRect ? cv.getBoundingClientRect() : null;
     const w = r && r.width > 0 ? r.width : S.W, h = r && r.height > 0 ? r.height : S.H;   // 2) 实测；rect 为 0 回退逻辑尺寸
-    const dprEff = Math.max(qFloor, Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(maxPixels(w, h) / Math.max(1, w * h))) * qScale);   // qFloor 默认 1（1 设备像素 = 1 CSS 像素，保清晰）；只有持续严重掉帧才放宽到 softMin
+    const base = Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(maxPixels(w, h) / Math.max(1, w * h)));   // 设备/预算上限
+    const dprEff = QFIX ? Math.max(.4, base * QFIX) : Math.max(qFloor, base * qScale);   // qFloor 默认 1（1 设备像素 = 1 CSS 像素，保清晰）；只有持续严重掉帧才放宽到 softMin
     cv.style.aspectRatio = S.W + '/' + S.H;        // 保比例防拉伸（列式布局靠它定高）
     cssW = w; cssH = h;
     if (w === lastW && h === lastH && dprEff === lastDpr && S.W === lastSW && S.H === lastSH) return;   // 无变化：不重建
@@ -1060,14 +1066,23 @@ window.Snake = window.Snake || {};
     diamond(sx, sy + K.HH - hgt, K.HW * 1.3, K.HH * 1.3, K.rgba(col, .07));   // Stage 0：降 alpha，减少边缘发软
     diamond(sx, sy + K.HH - hgt, K.HW * 1.7, K.HH * 1.7, K.rgba(col, .035));
   }
-  /* ---------- 移动插值：core 记录 p.moveT/moveP（游戏时钟），这里按帧时刻在“上一格→当前格”间线性插值 ---------- */
+  /* ---------- 移动插值 ----------
+     core 每次移动记录 p.moveT/p.moveP（渲染时钟）与 p.moveTGame（同一刻的游戏时钟）。
+     默认用渲染时钟 + 缓出曲线：按下转向后头部立即起步，且在下一格到来前就基本到位——线性插值要满
+     moveP 才到位，观感上比 2.0 慢半拍（用户反馈「按键后响应偏慢」）；2.0 用的是游戏时钟，起步就
+     跳掉最多半格（快但有瞬移）。?interp=legacy 可切回 2.0 时钟做 A/B。 */
+  const LEGACY_INTERP = /(^|[?&])interp=legacy(&|$)/.test((typeof location !== 'undefined' && location.search) || '');
+  const EASE_POW = 2.2;                                  // 缓出指数（1 = 线性；越大越早到位）
+  const ease = a => a <= 0 ? 0 : a >= 1 ? 1 : 1 - Math.pow(1 - a, EASE_POW);
   const PTS = [[], []];                                   // 每玩家浮点格坐标缓存（逐帧复用，零分配）
   const items = [];                                       // 画家算法排序表（对象池复用，逐帧零分配）
   function segPos(p, j, t, out) {
-    const cur = p.body[j], a = p.moveP ? (t - p.moveT) / p.moveP : 1;
+    const cur = p.body[j], t0 = LEGACY_INTERP ? (p.moveTGame || p.moveT) : p.moveT;
+    const a = p.moveP ? (t - t0) / p.moveP : 1;
     if (a > 0 && a < 1) { // 中段身体来自 body[j+1]；尾段：生长帧原地，否则来自让出的旧尾格
       const from = j < p.body.length - 1 ? p.body[j + 1] : (p.grew ? cur : (p.tailFrom || cur));
-      out.x = from.x + (cur.x - from.x) * a; out.y = from.y + (cur.y - from.y) * a;
+      const e = ease(a);
+      out.x = from.x + (cur.x - from.x) * e; out.y = from.y + (cur.y - from.y) * e;
     } else { out.x = cur.x; out.y = cur.y; }              // a≥1（未动/暂停/结束）停稳在当前格
     return out;
   }
@@ -1165,7 +1180,7 @@ window.Snake = window.Snake || {};
       else if (S.frameDt < K.TUNE.lowFxOff) { if (S.lowFx && ++S.fxGood >= K.TUNE.lowFxRecover) { S.lowFx = false; S.fxGood = 0; } } // 滞回恢复：卡顿是暂时的
       else S.fxGood = 0;
     }
-    if (!document.hidden) {   // 自适应画质：窗口化漏帧统计（不用帧时均值，免得启动尖峰把均值抬高误降档）
+    if (!document.hidden && !QFIX) {   // 自适应画质：窗口化漏帧统计（不用帧时均值，免得启动尖峰把均值抬高误降档）；?q= 固定时整段跳过
       if (qPre < Q.warmup) qPre++;
       else {
         qWin++;
@@ -1271,8 +1286,8 @@ window.Snake = window.Snake || {};
     if (FPS_ON) {   // 诊断读数（?fps=1）：帧率 / 平均帧时 / 画质档 / 背店；字号按 cssK 折算成屏幕上的 ~11px
       fpsN++; if (t - fpsT0 > 500) { fpsVal = Math.round(fpsN * 1000 / (t - fpsT0)); fpsT0 = t; fpsN = 0; }
       const dropPct = qWin ? Math.round(qDrop / qWin * 100) : 0;   // 本决策窗口的漏帧率，便于用户回报「卡不卡」
-      const txt = fpsVal + ' fps · ' + (S.frameDt * 1000).toFixed(1) + 'ms · 画质 ' + Math.round(qScale * 100) + '%'
-        + ' · 漏帧 ' + dropPct + '%' + (S.lowFx ? ' · lowFx' : '') + ' · ' + cv.width + '×' + cv.height
+      const txt = fpsVal + ' fps · ' + (S.frameDt * 1000).toFixed(1) + 'ms · ' + (QFIX ? '画质 固定' + Math.round(QFIX * 100) + '%' : '画质 ' + Math.round(qScale * 100) + '%')
+        + ' · 漏帧 ' + dropPct + '%' + (S.lowFx ? ' · lowFx' : '') + (LEGACY_INTERP ? ' · 旧插值' : '') + ' · ' + cv.width + '×' + cv.height
         + (cssW ? ' (×' + (cv.width / cssW).toFixed(2) + ')' : '');   // 括号里是等效倍率：<1 表示已软渲染换流畅
       const k = 1 / cssK, fs = 11 * k, pad = 6 * k;
       // 位置：默认画布左下角（单人沉浸/列式布局那里是空的；左上被罗盘占、右上被能量条占）；PK 沉浸下左下是方向垫，抬到垫子之上
@@ -1302,7 +1317,7 @@ window.Snake = window.Snake || {};
     }
     requestAnimationFrame(frame);
   }
-  Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: applyCanvasSize };
+  Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: applyCanvasSize, ease };
 })();
 </script>
 <script>

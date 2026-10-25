@@ -541,3 +541,29 @@ test('诊断读数：?fps=1 画在画布左下角（避开左上罗盘），不�
   const H2 = makeDom({}); boot(H2); H2.drive(20);
   assert.equal((H2.C.texts || []).filter(t => /fps/.test(t[0])).length, 0, '不带 ?fps=1 时不应画读数');
 });
+
+/* ---------- 12. 诊断开关：?q= 固定画质倍率（关自适应）、?interp=legacy 切回 2.0 插值时钟、缓出曲线 ---------- */
+test('诊断开关与缓出插值：?q=0.6 固定背店倍率且掉帧也不改档；?interp=legacy 记录游戏时钟；缓出前期更快到位', () => {
+  // ?q=0.6：背店 = rect × base × 0.6（base = min(dpr, 3, 像素预算)），且长时间掉帧也不改档
+  const H = makeDom({ search: '?q=0.6', main: { w: 1024, h: 768 }, dpr: 2 }); boot(H);
+  const r = H.cv.getBoundingClientRect();
+  const base = Math.min(2, 3, Math.sqrt(MAX_PX(r.width, r.height, false) / (r.width * r.height)));
+  const want = Math.round(r.width * base * .6);
+  assert.ok(Math.abs(H.cv.width - want) <= 1, `?q=0.6 背店宽度应 ≈ rect×base×0.6（${H.cv.width} vs ${want}）`);
+  const w0 = H.cv.width;
+  for (let i = 0; i < 400; i++) H.drive(1, 40);        // 持续大帧：自适应被 ?q= 关掉，不该动
+  assert.equal(H.cv.width, w0, '?q= 固定画质时不应被自适应改档');
+
+  // 缓出曲线：端点精确、单调、中点明显大于线性 0.5（承诺「下一格到来前就基本到位」）
+  const ease = H.sb.Snake.Render.ease;
+  assert.equal(ease(0), 0); assert.equal(ease(1), 1); assert.equal(ease(-1), 0); assert.equal(ease(2), 1);
+  assert.ok(ease(.5) > .6, `缓出中点应明显大于 0.5（实际 ${ease(.5).toFixed(3)}）`);
+  let prev = -1; for (let a = 0; a <= 1.0001; a += .05) { const v = ease(a); assert.ok(v >= prev, '缓出曲线应单调不减'); prev = v; }
+
+  // ?interp=legacy：core 同时记录游戏时钟（2.0 的插值起点），且它不晚于渲染时钟
+  const Hl = makeDom({ search: '?interp=legacy&autostart=1' }); boot(Hl); Hl.api.start(); Hl.key('KeyA'); Hl.drive(40);
+  const p = Hl.S.pl[0];
+  assert.ok(p.moveTGame > 0, '?interp=legacy 下 core 应记录 moveTGame（游戏时钟）');
+  assert.ok(p.moveTGame <= p.moveT + 1, `moveTGame（游戏时钟 ${p.moveTGame}）不应晚于 moveT（渲染时钟 ${p.moveT}）`);
+  assert.ok(Hl.C.drawImage > 0, '?interp=legacy 下应正常渲染');
+});
