@@ -261,6 +261,17 @@ test('长局 soak：四模式双 AI 自走，移动节奏不越界、食物与�
   }
 });
 
+/* ---------- 3D 双人对战的食物数（用户反馈「人机秒死」后加的调参）：多给食物，别让两条蛇死抢同一颗 ---------- */
+test('3D 双人对战食物数 = K.TUNE.foods3d；经典仍用 MODES.foods', () => {
+  const sb = load('?mode=ai&terrain=1&level=test-24', false, true);
+  sb.Snake.api.reset(); sb.Snake.api.start();
+  assert.equal(sb.Snake.S.foods.length, sb.Snake.K.TUNE.foods3d, '3D 双人应铺满 foods3d 颗食物');
+  assert.ok(sb.Snake.S.foods.every(f => sb.Snake.S.T.hasWalk(f.x, f.y)), '3D 食物必须落在可走格');
+  const c = load('?mode=ai');
+  c.Snake.api.reset(); c.Snake.api.start();
+  assert.equal(c.Snake.S.foods.length, 3, '经典人机对战仍是 3 颗（MODES.foods）');
+});
+
 /* ---------- 屏幕方向键映射：↑↓←→ 各自只往屏幕同侧转，已在同侧则忽略 ---------- */
 test('屏幕方向键映射：↑↓←→ 按屏幕方向生效（旧表整体偏 45°——往右下走按 ↑ 会毫无反应）', () => {
   const sb = load(); sb.Snake.api.reset(); sb.Snake.api.start();

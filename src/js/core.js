@@ -47,6 +47,7 @@ window.Snake = window.Snake || {};
       lowFxOn: .032, lowFxOff: .020, lowFxRecover: 120,  // render 帧耗时 EMA：超过 on 降级，低于 off 连续 recover 帧恢复
       comboWindow: 6000, comboBonus: 1,                  // 连击：6s 内持续吃食，第 2 个起每个额外 +1（×2 封顶）
       goldChance: .12, goldTtl: 6000, goldScore: 3, goldEnergy: 30,  // 金苹果：每次吃食后 12% 概率出现，6s 过期，+3 分 +30 能量
+      foods3d: 6,   // 3D 双人对战的食物数：层图地图大、可走格多，多给几颗，别让两条蛇死抢同一颗（经典模式仍用 MODES.foods）
       moveLead: 8                                        // 插值起势：移动那一帧把插值时钟提前 8ms（≈半帧），按下后首帧就看得见位移
     }
   };
@@ -219,7 +220,7 @@ window.Snake = window.Snake || {};
     return free;
   }
   function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
-    const want = K.MODES[S.mode].foods;
+    const want = (S.T && K.MODES[S.mode].players === 2) ? K.TUNE.foods3d : K.MODES[S.mode].foods;   // 3D 双人对战多给食物，减少「抢同一颗」的迎头撞
     if (S.foods.length >= want) return;
     const free = freeCells();
     while (S.foods.length < want) {
