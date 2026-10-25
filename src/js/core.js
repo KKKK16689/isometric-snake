@@ -304,7 +304,12 @@ window.Snake = window.Snake || {};
       if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
       return { x: nx, y: ny, L: pk.h };
     });
-    const eat = hs.map(h => h ? S.foods.findIndex(f => f.x === h.x && f.y === h.y && (f.L || 0) === (h.L || 0)) : -1);
+    const onFood = (x, y, L) => S.foods.findIndex(f => f.x === x && f.y === y && (f.L || 0) === (L || 0));
+    const eat = hs.map(h => {                        // 冰面滑行：途经格上的食物也算吃掉（§5 逐格处理）
+      if (!h) return -1;
+      if (h.slide) for (const s of h.slide) { const k = onFood(s.x, s.y, s.L); if (k >= 0) return k; }
+      return onFood(h.x, h.y, h.L);
+    });
     const hit = hs.map((h, i) => {
       if (!h) return false;
       if (h.bad) return true;                                      // 撞墙/水/悬崖
