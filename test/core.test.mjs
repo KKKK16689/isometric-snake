@@ -13,9 +13,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = {
   core: readFileSync(join(ROOT, 'src/js/core.js'), 'utf8'),
   ai: readFileSync(join(ROOT, 'src/js/ai.js'), 'utf8'),
+  levels: readFileSync(join(ROOT, 'src/js/levels.js'), 'utf8'),
+  terrain: readFileSync(join(ROOT, 'src/js/terrain.js'), 'utf8'),
 };
 
-function load(search = '', withAi = false) {
+function load(search = '', withAi = false, withMap = false) {
   const store = new Map();
   const sandbox = {
     console, URLSearchParams,
@@ -35,6 +37,10 @@ function load(search = '', withAi = false) {
   sandbox.Math = Object.create(Math);
   sandbox.Math.random = () => { _rs = (_rs * 1103515245 + 12345) % 2147483648; return _rs / 2147483648; };
   vm.createContext(sandbox);
+  if (withMap) {   // 远征测试：层图与关卡数据必须在 core 之前就位（core 启动时可能就按 URL 建层图）
+    vm.runInContext(SRC.terrain, sandbox, { filename: 'terrain.js' });
+    vm.runInContext(SRC.levels, sandbox, { filename: 'levels.js' });
+  }
   vm.runInContext(SRC.core, sandbox, { filename: 'core.js' });
   if (withAi) {   // 无头：跳过 ai.init() 的 DOM 绑定，直接挂 think
     vm.runInContext(SRC.ai, sandbox, { filename: 'ai.js' });
@@ -273,6 +279,55 @@ test('屏幕方向键映射：↑↓←→ 按屏幕方向生效（旧表整体�
     const q = p.queue.length ? N[p.queue[p.queue.length - 1].join(',')] : null;
     assert.equal(q, T[cur][key], `朝向 ${cur} 按 ${key} 应得 ${T[cur][key] || '忽略'}，实际 ${q || '忽略'}`);
   }
+});
+
+/* ---------- 3.0 远征：层图接管地图（Stage 1 只做墙/水硬阻挡，高差与传送见 Stage 2） ---------- */
+test('远征模式：层图接管地图——24×24、视口 18、关卡出生点、墙水阻挡、食物落在可走格、相机跟随', () => {
+  const sb = load('?mode=expedition&level=test-24', false, true);
+  const { Snake } = sb, S = Snake.S;
+  assert.equal(S.mode, 'expedition');
+  assert.equal(S.levelId, 'test-24', 'URL 的 level 参数在启动时就生效');
+  assert.ok(S.T && S.T.w === 24, '层图在启动时已建立');
+
+  Snake.api.newGame();   // 页面启动块调的是 api.reset() → newGame；测试里显式走一遍
+  assert.equal(S.MAP_N, 24); assert.equal(S.N, 24);
+  assert.equal(S.VIEW_N, 18, '桌面视口 18 格（窄屏 14）');
+  assert.equal(S.W, 18 * 30 + 20); assert.equal(S.H, 18 * 15 + 34 + 12);
+
+  Snake.api.start();
+  const p = S.pl[0];
+  assert.equal(p.body[0].x, 4); assert.equal(p.body[0].y, 11, 'P1 出生点来自关卡数据');
+  assert.ok(eq(p.dir, 1, 0), '朝向来自关卡数据（downRight）');
+  assert.equal(JSON.stringify(p.body.map(s => [s.x, s.y])), '[[4,11],[3,11],[2,11]]', '蛇身铺在出生点身后');
+  S.foods.forEach(f => assert.ok(S.T.hasWalk(f.x, f.y), '食物必须落在可走格 (' + f.x + ',' + f.y + ')'));
+
+  /* 墙是硬阻挡：把蛇头贴到左墙边、朝墙走 ⇒ 必掉命（远征 1 条命 ⇒ 直接结算） */
+  p.body = [{ x: 1, y: 11 }, { x: 2, y: 11 }, { x: 3, y: 11 }]; p.dir = [-1, 0]; p.queue = [];
+  for (let i = 0; i < 6 && S.state === 'playing'; i++) stepOnce(sb);
+  assert.notEqual(S.state, 'playing', '撞墙必须结束这一局');
+
+  /* 相机：死区内不推动、贴边时 clamp 在地图内 */
+  Snake.api.newGame(); Snake.api.start();
+  const q = S.pl[0], half = (S.VIEW_N - 1) / 2;
+  for (let i = 0; i < 4; i++) stepOnce(sb);
+  const near = (a, b) => Math.abs(a - b) <= 2;   // 死区 2 格；贴地图边时允许被 clamp 顶住
+  assert.ok((near(q.body[0].x, S.camCX) || S.camCX === half) && (near(q.body[0].y, S.camCY) || S.camCY === half), '死区内不推动相机（贴边时被 clamp）');
+  q.body = [{ x: 22, y: 22 }, { x: 21, y: 22 }, { x: 20, y: 22 }];
+  Snake.api.update(sb.__t + 5);
+  assert.ok(S.camCX >= half && S.camCX <= S.N - 1 - half, '相机 x 必须在地图内');
+  assert.ok(S.camCY >= half && S.camCY <= S.N - 1 - half, '相机 y 必须在地图内');
+  assert.equal(S.camCX, S.N - 1 - half, '追到右下角应被边界 clamp 住');
+});
+
+test('经典模式不受层图影响：MAP_N/VIEW_N 等于棋盘、S.T 为空、出生点仍是 2.0 原样', () => {
+  const sb = load();   // 刻意不加载 terrain/levels：经典路径不许依赖它们
+  const { Snake } = sb, S = Snake.S;
+  Snake.api.setMode('normal');
+  assert.equal(S.MAP_N, 12); assert.equal(S.VIEW_N, 12); assert.equal(S.T, null);
+  assert.equal(S.W, 380); assert.equal(S.H, 226);
+  assert.equal(JSON.stringify(S.pl[0].body.map(s => [s.x, s.y])), '[[3,6],[2,6],[1,6]]');
+  assert.ok(eq(S.pl[0].dir, 1, 0));
+  assert.equal(S.camCX, 5.5); assert.equal(S.camCY, 5.5, '经典相机固定在地图中心 ⇒ 渲染偏移恒 0');
 });
 
 /* ---------- 插值时钟：moveT 取渲染时钟 S.now 并提前 moveLead 起势，不再落后游戏时钟 S.last ---------- */

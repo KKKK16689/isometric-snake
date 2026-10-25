@@ -87,7 +87,7 @@ test('传送门：字母成对、两端可走（P(2,2)↔p(21,3)、Q(21,20)↔q(
 test('可达性：全部可走层节点从 P1 出生点可达', () => {
   const T = load().Terrain.build(L());
   const s = T.spawns[0], top = T.topWalk(s.x, s.y);
-  assert.equal(s.x, 2); assert.equal(s.y, 11); assert.equal(top.h, 0, 'P1 出生点在平地');
+  assert.equal(s.x, 4); assert.equal(s.y, 11); assert.equal(top.h, 0, 'P1 出生点在平地');
   const dist = T.reachable(s.x, s.y, top.h);
   const miss = T.walkables().filter(n => !dist.has(T.key(n.x, n.y, n.L)));
   assert.equal(miss.length, 0, '不可达节点：' + JSON.stringify(miss.slice(0, 3)));
@@ -115,8 +115,8 @@ test('负例必须抛错：传送门落单 / 出生点无跑道 / 孤岛不可�
 
   assert.throws(() => S.Terrain.validate(setCh(base, 21, 3, '.')), /传送门 'p' 必须恰好两端/);
 
-  let noRun = setCh(base, 1, 11, '#');                 // 把 P1 出生点 (2,11) 围成一格死巷
-  noRun = setCh(noRun, 3, 11, '#'); noRun = setCh(noRun, 2, 10, '#'); noRun = setCh(noRun, 2, 12, '#');
+  let noRun = setCh(base, 3, 11, '#');                 // 把 P1 出生点 (4,11) 围成一格死巷
+  noRun = setCh(noRun, 5, 11, '#'); noRun = setCh(noRun, 4, 10, '#'); noRun = setCh(noRun, 4, 12, '#');
   assert.throws(() => S.Terrain.validate(noRun), /没有 3 格直线跑道/);
 
   let island = setCh(base, 4, 1, '1');                // 造一个四面被墙围死的可走层节点
