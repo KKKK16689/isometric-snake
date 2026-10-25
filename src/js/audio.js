@@ -197,6 +197,7 @@ window.Snake = window.Snake || {};
     bus.on('sprintOff', e => windStop(e.i));
     bus.on('sprintLock', e => { windStop(e.i); tone('square', 300, 120, .22, .06); });
     bus.on('crash', () => { stopAllWinds(); noise(.3, .28, 900, 180); });
+    bus.on('port', () => [660, 990, 1320].forEach((f, k) => setTimeout(() => tone('sine', f, f * 1.35, .12, .09), k * 45)));   // 传送门：上行三连音（听感上「嗖」一下）
     bus.on('win', () => [523.25, 659.25, 783.99].forEach((f, k) => setTimeout(() => tone('triangle', f, f, .24, .14), k * 110))); // 上行大三和弦三连音
     bus.on('lose', () => [392, 261.63].forEach((f, k) => setTimeout(() => tone('sine', f, f * .96, .3, .12), k * 200)));   // 下行双音
     if (musicOn) bgmStart();

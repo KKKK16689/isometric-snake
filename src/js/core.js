@@ -138,7 +138,8 @@ window.Snake = window.Snake || {};
     const half = (S.VIEW_N - 1) / 2, dz = 2;
     const tx = Math.abs(h.x - S.camCX) > dz ? h.x - Math.sign(h.x - S.camCX) * dz : S.camCX;
     const ty = Math.abs(h.y - S.camCY) > dz ? h.y - Math.sign(h.y - S.camCY) * dz : S.camCY;
-    const snap = Snake.hooks && Snake.hooks.noCamSmooth;                     // 系统「减弱动态」：直接贴到目标，不做缓动
+    const jump = S.pl[0].body[1] && Math.abs(S.pl[0].body[1].x - h.x) + Math.abs(S.pl[0].body[1].y - h.y) > 3;   // 传送门：一帧跨好几格
+    const snap = (Snake.hooks && Snake.hooks.noCamSmooth) || jump;           // 系统「减弱动态」或传送：直接贴到目标，不做缓动（否则像画面被拽走）
     const dt = S.frameDt > 0 ? S.frameDt : 1 / 60;
     const k = snap ? 1 : 1 - Math.pow(.0009, dt);                            // 时间常数 ~0.14s，与帧率无关
     S.camCX += (tx - S.camCX) * k; S.camCY += (ty - S.camCY) * k;
@@ -300,7 +301,7 @@ window.Snake = window.Snake || {};
       const h0 = p.body[0], L0 = h0.L || 0;
       if (!S.T) return { x: h0.x + p.dir[0], y: h0.y + p.dir[1], L: 0, bad: solid(h0.x + p.dir[0], h0.y + p.dir[1]) };
       const pe = portalEdge(h0.x, h0.y, L0);                       // §3.4：踩在传送门上 → 本步走传送门边
-      if (pe) return pe;
+      if (pe) { bus.emit('port', { x: h0.x, y: h0.y, L: L0, tx: pe.x, ty: pe.y, tL: pe.L || 0, i }); return pe; }   // 两端都要有光效，别让人「莫名其妙被传走」
       const nx = h0.x + p.dir[0], ny = h0.y + p.dir[1], pk = S.T.pick(nx, ny, L0);   // §3.3：按层选落点
       if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
       return { x: nx, y: ny, L: pk.h };

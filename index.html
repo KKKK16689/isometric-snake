@@ -314,7 +314,8 @@ window.Snake = window.Snake || {};
     const half = (S.VIEW_N - 1) / 2, dz = 2;
     const tx = Math.abs(h.x - S.camCX) > dz ? h.x - Math.sign(h.x - S.camCX) * dz : S.camCX;
     const ty = Math.abs(h.y - S.camCY) > dz ? h.y - Math.sign(h.y - S.camCY) * dz : S.camCY;
-    const snap = Snake.hooks && Snake.hooks.noCamSmooth;                     // 系统「减弱动态」：直接贴到目标，不做缓动
+    const jump = S.pl[0].body[1] && Math.abs(S.pl[0].body[1].x - h.x) + Math.abs(S.pl[0].body[1].y - h.y) > 3;   // 传送门：一帧跨好几格
+    const snap = (Snake.hooks && Snake.hooks.noCamSmooth) || jump;           // 系统「减弱动态」或传送：直接贴到目标，不做缓动（否则像画面被拽走）
     const dt = S.frameDt > 0 ? S.frameDt : 1 / 60;
     const k = snap ? 1 : 1 - Math.pow(.0009, dt);                            // 时间常数 ~0.14s，与帧率无关
     S.camCX += (tx - S.camCX) * k; S.camCY += (ty - S.camCY) * k;
@@ -476,7 +477,7 @@ window.Snake = window.Snake || {};
       const h0 = p.body[0], L0 = h0.L || 0;
       if (!S.T) return { x: h0.x + p.dir[0], y: h0.y + p.dir[1], L: 0, bad: solid(h0.x + p.dir[0], h0.y + p.dir[1]) };
       const pe = portalEdge(h0.x, h0.y, L0);                       // §3.4：踩在传送门上 → 本步走传送门边
-      if (pe) return pe;
+      if (pe) { bus.emit('port', { x: h0.x, y: h0.y, L: L0, tx: pe.x, ty: pe.y, tL: pe.L || 0, i }); return pe; }   // 两端都要有光效，别让人「莫名其妙被传走」
       const nx = h0.x + p.dir[0], ny = h0.y + p.dir[1], pk = S.T.pick(nx, ny, L0);   // §3.3：按层选落点
       if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
       return { x: nx, y: ny, L: pk.h };
@@ -1308,6 +1309,7 @@ window.Snake = window.Snake || {};
     bus.on('sprintOff', e => windStop(e.i));
     bus.on('sprintLock', e => { windStop(e.i); tone('square', 300, 120, .22, .06); });
     bus.on('crash', () => { stopAllWinds(); noise(.3, .28, 900, 180); });
+    bus.on('port', () => [660, 990, 1320].forEach((f, k) => setTimeout(() => tone('sine', f, f * 1.35, .12, .09), k * 45)));   // 传送门：上行三连音（听感上「嗖」一下）
     bus.on('win', () => [523.25, 659.25, 783.99].forEach((f, k) => setTimeout(() => tone('triangle', f, f, .24, .14), k * 110))); // 上行大三和弦三连音
     bus.on('lose', () => [392, 261.63].forEach((f, k) => setTimeout(() => tone('sine', f, f * .96, .3, .12), k * 200)));   // 下行双音
     if (musicOn) bgmStart();
@@ -1356,6 +1358,11 @@ window.Snake = window.Snake || {};
   bus.on('crash', e => { // 撞击火花：lowFx 减半
     const c = pal(), cols = [c.spark, '#ffffff', K.shades(c.spark)[2]];
     (e.heads || []).forEach(h => { const [cx, cy] = at(h.x, h.y, h.L); scatter(cx, cy, S.lowFx ? 10 : 20, cols, 90, 75); });
+  });
+  bus.on('port', e => { // 传送门：落点大爆、起点小爆（两端都要看得见，规格 §3.4）
+    const [x2, y2] = at(e.tx, e.ty, e.tL), [x1, y1] = at(e.x, e.y, e.L);
+    scatter(x2, y2, S.lowFx ? 8 : 18, ['#7FD4FF', '#BFF0FF', '#ffffff'], 55, 70);
+    scatter(x1, y1, S.lowFx ? 3 : 8, ['#7FD4FF', '#ffffff'], 25, 45);
   });
   bus.on('win', () => { // 对战获胜烟花：3 轮 × 14 粒；lowFx 1 轮
     const c = pal(), cols = [c.spark, K.shades(c.spark)[0], K.shades(c.spark)[2], c.food, K.shades(c.food)[0]];
@@ -1420,7 +1427,7 @@ window.Snake = window.Snake || {};
      几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
   const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: .75 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
-  const BUILD = 'stage3.1';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
+  const BUILD = 'stage3.2';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
   const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
     const m = /(^|[?&])q=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
@@ -1623,6 +1630,19 @@ window.Snake = window.Snake || {};
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const sx = snap(PX(x, y)), sy = snap(PY(x, y) + K.HH);   // 瓦片中心：对齐设备像素，边缘不虚
       const ls = S.T ? S.T.at(x, y) : null;                    // 远征：按层图区分水面（Stage 1 只做灰模 + 硬阻挡）
+      const portalL = ls ? ls.find(l => l.kind === 'portal') : null;   // 传送门格：画成醒目的青色漩涡（进静态层 ⇒ 零逐帧成本）
+      if (portalL) {
+        diamond(sx, sy, K.HW, K.HH, '#0B1A2A');                                          // 门底压深，和地面拉开
+        diamond(sx, sy, K.HW * .84, K.HH * .84, 'rgba(127,212,255,.26)');
+        diamond(sx, sy, K.HW * .54, K.HH * .54, 'rgba(127,212,255,.5)');
+        ctx.strokeStyle = 'rgba(190,240,255,.95)'; ctx.lineWidth = 2 * lw;               // 双线环：一眼能认出
+        ctx.beginPath(); ctx.moveTo(sx, sy - K.HH * .84); ctx.lineTo(sx + K.HW * .84, sy); ctx.lineTo(sx, sy + K.HH * .84); ctx.lineTo(sx - K.HW * .84, sy); ctx.closePath(); ctx.stroke();
+        ctx.fillStyle = 'rgba(6,12,22,.9)'; ctx.font = 'bold ' + (10 / cssK) + 'px ui-monospace, Menlo, monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText((portalL.portal || '?').toUpperCase(), sx, sy);                     // 字母：同字母＝一对（规格 §3.4）
+        ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+        continue;
+      }
       const water = !!ls && ls.some(l => l.kind === 'water') && !ls.some(l => l.kind === 'deck');
       diamond(sx, sy, K.HW, K.HH, water ? '#16324F' : ((x + y) % 2 ? pal.floorTop : pal.floorRight));
       ctx.strokeStyle = water ? 'rgba(120,190,255,.18)' : pal.grid; ctx.lineWidth = lw; // 网格线随主题
@@ -1642,6 +1662,13 @@ window.Snake = window.Snake || {};
   const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（灰模，与皮肤无关）
   const liftOf = (x, y) => S.T ? ((S.T.topWalk(x, y) || { h: 0 }).h) * BLK : 0;   // 该格「最高可走层」的抬升（食物/金苹果落点按此层）
   const liftAt = (x, y, L) => S.T ? (L || 0) * BLK : 0;   // 实体按自己所在层的层高抬升（规格 §3.2：层号参与碰撞与渲染）
+  let PORTALS = [], portalsFor = null;                    // 传送门位置缓存（关卡换了才重算——门很少，重算可忽略）
+  function refreshPortals() {
+    if (portalsFor === S.T) return;
+    portalsFor = S.T; PORTALS = [];
+    if (!S.T) return;
+    for (const n of S.T.walkables()) { const l = S.T.layerAt(n.x, n.y, n.L); if (l && l.kind === 'portal') PORTALS.push({ x: n.x, y: n.y, L: n.L }); }
+  }
   const blkTop = (x, y) => {   // 该格「地块」的顶面高度（px）：平地 0；墙/高台/桥面取最高层
     const ls = S.T && S.T.at(x, y); if (!ls) return 0;
     let m = 0;
@@ -1879,6 +1906,14 @@ window.Snake = window.Snake || {};
     });
     S.foods.forEach(f => { const sx = PX(f.x, f.y), sy = PY(f.x, f.y) - liftOf(f.x, f.y); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); glowAt(sx, sy + K.HH, 14 + Math.sin(t / 300) * 4, fg, .4); });   // 食物辉光始终保留（Stage 0）
     if (S.gold) { const sx = PX(S.gold.x, S.gold.y), sy = PY(S.gold.x, S.gold.y) - liftOf(S.gold.x, S.gold.y); diamond(sx, sy + K.HH, K.HW * 1.8, K.HH * 1.8, 'rgba(242,179,61,.22)'); glowAt(sx, sy + K.HH, 18 + Math.sin(t / 200) * 5, '#F2B33D', .55); }   // 金苹果地板光 + 辉光（跟着台面高度走）
+    refreshPortals();   // 传送门呼吸光：让「脚下就是门」一眼可见（关卡变了才重算位置）
+    for (const q of PORTALS) {
+      const qx = PX(q.x, q.y), qy = PY(q.x, q.y) - liftAt(q.x, q.y, q.L);
+      if (qx < -K.TW || qx > S.W + K.TW || qy < -K.TH * 4 || qy > S.H + K.TH * 4) continue;   // 视口外不画
+      const k2 = .5 + .5 * Math.sin(t / 320 + q.x + q.y);
+      diamond(qx, qy + K.HH, K.HW * (.95 + .3 * k2), K.HH * (.95 + .3 * k2), K.rgba('#7FD4FF', .10 + .12 * k2));
+      glowAt(qx, qy + K.HH - 4, 16 + 12 * k2, '#7FD4FF', .38);
+    }
     ctx.globalCompositeOperation = 'source-over';
     /* 幽灵回放：半透明灰白蛇，按当前步数逐格推进（数据 = 破纪录局存档的 p0 路径） */
     if (S.ghostOn && S.ghost && S.pl[0] && S.state !== 'over') {
