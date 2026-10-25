@@ -623,8 +623,8 @@ test('经典模式视觉锁：90 帧绘制轨迹摘要恒定（Stage 1-5 改地�
   const a = digest(20261025), b = digest(7);
   assert.ok(a.ops > 800 && b.ops > 800, '绘制轨迹太短，锁不住画面（' + a.ops + ' / ' + b.ops + ' 条）');
   assert.notEqual(a.h, b.h, '不同种子的轨迹摘要必须不同（否则说明摘要退化成常量、锁不住任何东西）');
-  assert.equal(a.h, 0xa224baec, '种子 20261025 的绘制轨迹变了：' + a.h.toString(16) + '（' + a.ops + ' 条 / ' + a.n + ' 张画布）');
-  assert.equal(b.h, 0x1c8c6710, '种子 7 的绘制轨迹变了：' + b.h.toString(16) + '（' + b.ops + ' 条 / ' + b.n + ' 张画布）');
+  assert.equal(a.h, 0xe88121c2, '种子 20261025 的绘制轨迹变了：' + a.h.toString(16) + '（' + a.ops + ' 条 / ' + a.n + ' 张画布）');   // 2026-10-25 手感修复：移动首帧改画旧格（不再瞬移一帧），摘要随之更新
+  assert.equal(b.h, 0x90df7f42, '种子 7 的绘制轨迹变了：' + b.h.toString(16) + '（' + b.ops + ' 条 / ' + b.n + ' 张画布）');
 });
 
 /* ---------- 渲染成本护栏：主画布每帧绘制量在预算内；静态地板缓存必须远低于主画布（不许逐帧重画全图） ---------- */
@@ -640,4 +640,35 @@ test('渲染成本护栏：主画布每帧绘制量有预算，静态地板缓�
   assert.ok(perFrame >= 150, '主画布每帧绘制量太低，可能压根没渲染：' + perFrame.toFixed(1));
   assert.ok(perFrame <= 700, '主画布每帧绘制量超预算（Stage 1-5 别让渲染膨胀）：' + perFrame.toFixed(1));
   assert.ok(board < main * .3, '静态地板缓存的绘制量不该接近主画布（退化成逐帧重画全图了）：board=' + board + ' main=' + main);
+});
+
+/* ---------- 手感契约：移动的首帧必须还画在旧格（不瞬移），随后缓出前进、全程单调 ---------- */
+test('手感契约：移动首帧画旧格不瞬移；半程已走过大部分格子；全程单调不倒退', () => {
+  const H = makeDom({ search: '?seed=20261025', dpr: 2 });
+  boot(H);
+  const R = H.sb.Snake.Render, p = H.S.pl[0], out = {};
+  p.body = [{ x: 1, y: 1 }, { x: 0, y: 1 }];      // 这一格：从 (0,1) 走到 (1,1)
+  p.moveT = 1000; p.moveTGame = 963; p.moveP = 150; p.grew = true; p.tailFrom = null;
+  const at = f => { R.segPos(p, 0, 1000 + 150 * f, out); return out.x; };
+  assert.equal(at(0), 0, '移动那一帧必须还画在旧格（同帧里 t 与 moveT 相等），画新格会瞬移一帧再倒回来');
+  assert.ok(at(.5) >= .75, '半程该走完 75% 以上格子（线性只有 50%，缓出＝跟手）：' + at(.5).toFixed(3));
+  assert.ok(at(.25) - at(0) > at(1) - at(.75), '缓出应当前快后慢');
+  assert.equal(at(1), 1, '一格时间该正好到位');
+  assert.equal(at(1.4), 1, '到位后停在新格，不许过冲');
+  let prev = -1;
+  for (let f = 0; f <= 1.4001; f += .05) {
+    const v = at(f);
+    assert.ok(v >= prev - 1e-9, '位置只能前进不能倒退（f=' + f.toFixed(2) + ' → ' + v.toFixed(3) + '）');
+    prev = v;
+  }
+  assert.ok(R.ease(0) === 0 && R.ease(1) === 1 && R.ease(.5) > .5, 'ease 必须是 0→1 的单调缓出');
+
+  // ?interp=legacy ＝ 2.0 的时钟：起步就按游戏时钟抢跑，所以观感更「冲」（对照留存，别被误删）
+  const L = makeDom({ search: '?interp=legacy', dpr: 2 });
+  boot(L);
+  const p2 = L.S.pl[0], out2 = {};
+  p2.body = [{ x: 1, y: 1 }, { x: 0, y: 1 }];
+  p2.moveT = 1000; p2.moveTGame = 963; p2.moveP = 150; p2.grew = true; p2.tailFrom = null;
+  L.sb.Snake.Render.segPos(p2, 0, 1000, out2);
+  assert.ok(out2.x > .3 && out2.x < .7, '?interp=legacy 起步就该抢跑 0.3~0.7 格（2.0 的瞬移手感）：x=' + out2.x.toFixed(3));
 });
