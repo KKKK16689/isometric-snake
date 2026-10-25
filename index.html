@@ -1084,11 +1084,11 @@ window.Snake = window.Snake || {};
   function segPos(p, j, t, out) {
     const cur = p.body[j], t0 = LEGACY_INTERP ? (p.moveTGame || p.moveT) : p.moveT;
     const a = p.moveP ? (t - t0) / (p.moveP * SPAN) : 1;
-    if (a > 0 && a < 1) { // 中段身体来自 body[j+1]；尾段：生长帧原地，否则来自让出的旧尾格
-      const from = j < p.body.length - 1 ? p.body[j + 1] : (p.grew ? cur : (p.tailFrom || cur));
-      const e = ease(a);
-      out.x = from.x + (cur.x - from.x) * e; out.y = from.y + (cur.y - from.y) * e;
-    } else { out.x = cur.x; out.y = cur.y; }              // a≥1（未动/暂停/结束）停稳在当前格
+    // a≤0 必须画「旧格」：移动那一帧 t 与 moveT 完全相等（update 与 draw 同帧同钟），画新格会先瞬移一帧、
+    // 下一帧再倒回旧格起步 —— 每格一次的一帧抖动，观感就是「一顿一顿」。a≥1（未动/暂停/结束）才停稳在新格。
+    const from = j < p.body.length - 1 ? p.body[j + 1] : (p.grew ? cur : (p.tailFrom || cur));   // 中段来自 body[j+1]；生长帧尾段原地，否则来自让出的旧尾格
+    const e = a <= 0 ? 0 : a >= 1 ? 1 : ease(a);
+    out.x = from.x + (cur.x - from.x) * e; out.y = from.y + (cur.y - from.y) * e;
     return out;
   }
   let shakeT = 0;
