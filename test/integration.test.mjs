@@ -80,6 +80,7 @@ function makeDom(opts = {}) {
   const byId = {};
   ['hl', 'hr', 'fs', 'snd', 'mus', 'vib', 'daily', 'ghost', 'copy', 'aiLv', 'hint', 'toast', 'live'].forEach(id => { byId[id] = El('span'); byId[id].id = id; });
   byId.spr = El('select'); byId.spr.id = 'spr'; byId.spr.value = 'b';
+  byId.mm = El('canvas'); byId.mm.id = 'mm'; makeCanvas(byId.mm);   // 远征小地图（HUD 一侧独立小 canvas）
   const cv = byId.c = El('canvas'); makeCanvas(cv);
   const eb0 = El('div'), eb1 = El('div'); eb0.firstElementChild = El('i'); eb1.firstElementChild = El('i');
   const pad0 = El('div'), pad1 = El('div'); pad0.dataset.p = '0'; pad1.dataset.p = '1';
@@ -722,4 +723,17 @@ test('集成：经典模式不建层图、相机固定在地图中心（画面�
   assert.equal(A.S.T, null, '经典模式不该构建层图');
   assert.equal(A.S.camCX, 5.5); assert.equal(A.S.camCY, 5.5);   // 12×12 棋盘中心，渲染偏移恒 0
   assert.equal(A.S.W, 380, '经典画布逻辑宽不变');
+});
+
+/* ---------- Stage 1：远征小地图（HUD 一侧独立小 canvas，4~8Hz 重绘） ---------- */
+test('集成：远征小地图——只在远征显示并重绘，经典模式一帧都不画', () => {
+  const H = makeDom({ search: '?mode=expedition&level=test-24&autostart=1', dpr: 2 });
+  boot(H); autoPlay(H, 40);
+  assert.ok(H.document.body.classList.contains('mm'), '远征时 body 应有 mm 类（显示小地图）');
+  const mctx = H.byId.mm.getContext('2d');
+  assert.ok(mctx._t.length > 0, '小地图应有绘制轨迹（4~8Hz 节流下 40 帧仍会画几次）');
+  assert.ok(H.byId.mm.width >= 96, '小地图背店按设备像素：' + H.byId.mm.width);
+  const A = makeDom({ search: '', dpr: 2 }); boot(A); autoPlay(A, 40);
+  assert.ok(!A.document.body.classList.contains('mm'), '经典模式不该显示小地图');
+  assert.equal(A.byId.mm.getContext('2d')._t.length, 0, '经典模式不该在小地图上画任何东西');
 });
