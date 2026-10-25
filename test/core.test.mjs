@@ -57,13 +57,13 @@ test('转向队列：最多存 2 个待执行转向，180° 掉头被拒绝', ()
   Snake.api.setMode('normal'); Snake.api.start();
   const p = Snake.S.pl[0];
   assert.ok(eq(p.dir, 1, 0), 'single-player initial dir downRight [1,0]');
-  Snake.api.press(0, 'left');                                 // 等距屏上 left → 候选 [upLeft, upRight]，steer 挑能转的
+  Snake.api.press(0, 'left');                                 // 等距屏上 left → 候选 [upLeft, downLeft]，steer 挑能转的
   Snake.api.press(0, 'up');
   Snake.api.press(0, 'right');
   assert.ok(p.queue.length <= 2, 'queue capped at 2, got ' + p.queue.length);
   p.queue = []; p.dir = [1, 0];
-  Snake.api.press(0, 'left');                                 // c1=[-1,0] 是掉头 → 必须改选 c2=[0,-1]
-  assert.ok(eq(p.queue[0], 0, -1), '180° reversal must be refused, got ' + JSON.stringify(p.queue[0]));
+  Snake.api.press(0, 'left');                                 // c1=[-1,0] 是掉头 → 必须改选 c2=[0,1]（左下＝屏幕上的左转）
+  assert.ok(eq(p.queue[0], 0, 1), '180° reversal must be refused, got ' + JSON.stringify(p.queue[0]));
 });
 
 test('吃食：增长 + 计分 + 窗口内连击额外 +1', () => {
@@ -205,5 +205,25 @@ test('随机 fuzz：四种模式混合操作下的核心不变量', () => {
       assert.equal(S.rec.length, 2 * S.myMoves, mode + ': 幽灵录制与步数失步');
       assert.ok(S.pl.every(p => p.score >= 0 && p.energy >= 0 && p.energy <= 100), mode + ': 分数/能量越界');
     }
+  }
+});
+
+/* ---------- 屏幕方向键映射：↑↓←→ 各自只往屏幕同侧转，已在同侧则忽略 ---------- */
+test('屏幕方向键映射：↑↓←→ 按屏幕方向生效（旧表整体偏 45°——往右下走按 ↑ 会毫无反应）', () => {
+  const sb = load(); sb.Snake.api.reset(); sb.Snake.api.start();
+  const V = { upRight: [0, -1], downRight: [1, 0], downLeft: [0, 1], upLeft: [-1, 0] };
+  const N = { '0,-1': 'upRight', '1,0': 'downRight', '0,1': 'downLeft', '-1,0': 'upLeft' };
+  const T = {   // 当前朝向 × 按键 → 期望结果（null = 该键此时应被忽略：已在朝那侧走）
+    upRight:   { up: null,      down: 'downRight', left: 'upLeft',   right: null },
+    downRight: { up: 'upRight', down: null,        left: 'downLeft', right: null },
+    downLeft:  { up: 'upLeft',  down: null,        left: null,       right: 'downRight' },
+    upLeft:    { up: null,      down: 'downLeft',  left: null,       right: 'upRight' },
+  };
+  for (const cur of Object.keys(T)) for (const key of Object.keys(T[cur])) {
+    const p = sb.Snake.S.pl[0];
+    p.dir = V[cur].slice(); p.queue.length = 0;      // 摆成朝 cur 直走、无待转
+    sb.Snake.api.press(0, key);
+    const q = p.queue.length ? N[p.queue[p.queue.length - 1].join(',')] : null;
+    assert.equal(q, T[cur][key], `朝向 ${cur} 按 ${key} 应得 ${T[cur][key] || '忽略'}，实际 ${q || '忽略'}`);
   }
 });
