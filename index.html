@@ -1467,17 +1467,71 @@ window.Snake = window.Snake || {};
     poly([[cx + a, cy - top], [cx, cy + b - top], [cx, cy + b - zb], [cx + a, cy - zb]], c[2]);
     diamond(cx, cy - top, a, b, c[0]);
   }
-  let boardCv = null;                    // 地板离屏画布复用：重建只重画，不再新建 canvas
+  let boardCv = null;                    // 静态层离屏画布：经典＝整块棋盘；远征＝比视口大一圈的「世界区域」
+  let bWOX = 0, bWOY = 0;                // 远征静态层左上角对应的世界逻辑坐标（与相机无关）
+  let bRegion = null;                    // 远征静态层覆盖的格范围
+  const BMARGIN = 2;                     // 区域比视口每边多留的格数（相机越界时只平移 + 补边条）
+  function worldBox(b) {                 // 格范围 → 世界包围盒（含地块高度与瓦片半高留白）
+    const x0 = S.OX + (b.x0 - b.y1) * K.HW, y0 = K.OY + (b.x0 + b.y0) * K.HH;
+    const x1 = S.OX + (b.x1 - b.y0) * K.HW, y1 = K.OY + (b.x1 + b.y1) * K.HH;
+    const px = K.HW * 1.2, pt = K.TH * 2.4;
+    return { x: x0 - px, y: y0 - pt, w: (x1 - x0) + px * 2, h: (y1 - y0) + pt + K.TH * 1.2 };
+  }
+  /* 远征静态层：画在「世界坐标」里，逐帧只按相机平移贴图（不再随相机重画 ⇒ 地板不再一格一跳、也不掉帧）。
+     相机走出预留的 2 格才平移：把已有内容整体自拷贝过去，只补新露出来的边条。 */
+  function ensureBoard() {
+    const need = viewBounds(0);                                  // 视口本身需要的格范围
+    const want = { x0: need.x0 - BMARGIN, y0: need.y0 - BMARGIN, x1: need.x1 + BMARGIN, y1: need.y1 + BMARGIN };
+    if (S.T) {   // 别画到地图外面去
+      const w = S.T.w - 1, h = S.T.h - 1;
+      want.x0 = Math.max(0, want.x0); want.y0 = Math.max(0, want.y0);
+      want.x1 = Math.min(w, want.x1); want.y1 = Math.min(h, want.y1);
+    }
+    if (!boardCv) boardCv = document.createElement('canvas');
+    const box = worldBox(want);
+    const ox = Math.round(box.x * scale) / scale, oy = Math.round(box.y * scale) / scale;   // 原点对齐设备像素
+    const pw = Math.max(1, Math.ceil((box.x + box.w - ox) * scale)), ph = Math.max(1, Math.ceil((box.y + box.h - oy) * scale));
+    const covered = bRegion && bRegion.x0 <= need.x0 && bRegion.y0 <= need.y0 && bRegion.x1 >= need.x1 && bRegion.y1 >= need.y1;
+    if (covered && boardCv.width === pw && boardCv.height === ph) return;   // 区域仍够用：这一帧零成本
+    const m = boardCv.getContext('2d');
+    if (!bRegion || boardCv.width !== pw || boardCv.height !== ph) {        // 首次 / 换画质 / 跨度变（到地图边）：整块重画
+      boardCv.width = pw; boardCv.height = ph;                              // 赋 width 同时清屏
+      bRegion = want; bWOX = ox; bWOY = oy;
+      m.setTransform(1, 0, 0, 1, 0, 0); m.clearRect(0, 0, pw, ph);
+      paintBoard(bRegion, want.x0, want.y0, want.x1, want.y1, true);
+      return;
+    }
+    const prev = bRegion, kx = bWOX, ky = bWOY;                             // 平移：内容整体自拷贝 + 只补新露出的边条
+    bRegion = want; bWOX = ox; bWOY = oy;
+    const sx = (bWOX - kx) * scale, sy = (bWOY - ky) * scale;               // 原点都对齐过设备像素 ⇒ 整数位移，不重采样
+    m.setTransform(1, 0, 0, 1, 0, 0); m.globalCompositeOperation = 'copy';
+    m.drawImage(boardCv, -sx, -sy); m.globalCompositeOperation = 'source-over';
+    if (want.x0 < prev.x0) paintBoard(bRegion, want.x0, want.y0, prev.x0 - 1, want.y1, true);
+    if (want.y0 < prev.y0) paintBoard(bRegion, want.x0, want.y0, want.x1, prev.y0 - 1, true);
+    if (want.x1 > prev.x1) paintBoard(bRegion, prev.x1 + 1, want.y0, want.x1, want.y1, true);
+    if (want.y1 > prev.y1) paintBoard(bRegion, want.x0, prev.y1 + 1, want.x1, want.y1, true);
+  }
   function drawBoard() {
     const b = viewBounds();
-    if (!boardCache || b.x0 !== bX0 || b.y0 !== bY0 || b.x1 !== bX1 || b.y1 !== bY1) {   // 相机移动超过 margin：重建静态层
-      if (!boardCv) boardCv = document.createElement('canvas');
-      boardCv.width = cv.width; boardCv.height = cv.height;   // 赋 width 同时清屏（与主画布同背店尺寸）
-      const main = ctx; ctx = boardCv.getContext('2d'); ctx.setTransform(scale, 0, 0, scale, 0, 0);
-      try { paintBoard(b); } finally { ctx = main; }
-      boardCache = boardCv; bX0 = b.x0; bY0 = b.y0; bX1 = b.x1; bY1 = b.y1;
+    if (!S.T) {   // 经典：整块棋盘，贴图参数与 2.0 逐字一致（视觉锁）
+      if (!boardCache || b.x0 !== bX0 || b.y0 !== bY0 || b.x1 !== bX1 || b.y1 !== bY1) {
+        if (!boardCv) boardCv = document.createElement('canvas');
+        boardCv.width = cv.width; boardCv.height = cv.height;   // 赋 width 同时清屏（与主画布同背店尺寸）
+        paintBoard(b, b.x0, b.y0, b.x1, b.y1, false);
+        boardCache = boardCv; bX0 = b.x0; bY0 = b.y0; bX1 = b.x1; bY1 = b.y1;
+      }
+      ctx.drawImage(boardCache, 0, 0, S.W, S.H);
+      return;
     }
-    ctx.drawImage(boardCache, 0, 0, S.W, S.H);
+    ensureBoard();                                              // 远征：世界区域滚动
+    const dx = bWOX - camOX, dy = bWOY - camOY;                  // 区域左上角的屏幕位置（逻辑单位）
+    const s0x = Math.max(0, -dx * scale), s0y = Math.max(0, -dy * scale);
+    const s1x = Math.min(boardCv.width, (S.W - dx) * scale), s1y = Math.min(boardCv.height, (S.H - dy) * scale);
+    if (s1x <= s0x || s1y <= s0y) return;
+    const px = 1 / (scale || 1);                                 // 目标位置对齐设备像素：地板不抖
+    ctx.drawImage(boardCv, s0x, s0y, s1x - s0x, s1y - s0y,
+      Math.round((dx + s0x / scale) / px) * px, Math.round((dy + s0y / scale) / px) * px,
+      (s1x - s0x) / scale, (s1y - s0y) / scale);
   }
   function isDarkBg() { const h = Snake.theme.current.css.bg, c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); return (.299 * c[0] + .587 * c[1] + .114 * c[2]) < 128; }
   function sideGrad(a, b, col) { // 侧面平行四边形：顶色→压暗 40% 纵向渐变（细腻层，离屏缓存）
@@ -1486,15 +1540,23 @@ window.Snake = window.Snake || {};
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(b[0], b[1] + 8); ctx.lineTo(a[0], a[1] + 8); ctx.closePath(); ctx.fill();
   }
-  function paintBoard(b) {
+  function paintBoard(b, x0, y0, x1, y1, world) {
+    const main = ctx; ctx = boardCv.getContext('2d');            // 画进静态层
+    const kx = camOX, ky = camOY;
+    if (world) { camOX = 0; camOY = 0; ctx.setTransform(scale, 0, 0, scale, -bWOX * scale, -bWOY * scale); }  // 世界坐标
+    else ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    try { paintTiles(b, x0, y0, x1, y1, world); }
+    finally { camOX = kx; camOY = ky; ctx = main; }
+  }
+  function paintTiles(b, x0, y0, x1, y1, world) {
     const dark = isDarkBg(), lw = 1 / cssK;   // 网格/倒角线宽 = 1 CSS px（不随显示缩放变粗）
-    let skirt = null;   // 经典：整块棋盘的台缘（远征视口在 24×24 地图内部，台缘不可见 ⇒ 不画）
-    if (!S.T) {
+    let skirt = null;   // 经典：整块棋盘的台缘（远征视口在地图内部，台缘不可见 ⇒ 不画）
+    if (!S.T && !world) {
       const l = [snap(S.OX - S.N * K.HW), snap(K.OY + S.N * K.HH)], r = [snap(S.OX + S.N * K.HW), snap(K.OY + S.N * K.HH)], bo = [snap(S.OX), snap(K.OY + S.N * K.TH)];
       sideGrad(l, bo, pal.floorLeft); sideGrad(r, bo, pal.floorRight);
       skirt = { l, r, bo };
     }
-    for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const sx = snap(PX(x, y)), sy = snap(PY(x, y) + K.HH);   // 瓦片中心：对齐设备像素，边缘不虚
       const ls = S.T ? S.T.at(x, y) : null;                    // 远征：按层图区分水面（Stage 1 只做灰模 + 硬阻挡）
       const water = !!ls && ls.some(l => l.kind === 'water') && !ls.some(l => l.kind === 'deck');

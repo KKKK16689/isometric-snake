@@ -67,7 +67,7 @@ function makeDom(opts = {}) {
       stroke: () => { N.stroke++; T.push('S@' + ctx.strokeStyle + '#' + q(ctx.lineWidth) + '#' + q(ctx.globalAlpha)); },
       fillText: (t, x, y) => { C.fillText++; (C.texts ||= []).push([String(t), x, y]); T.push('T' + String(t) + '@' + q(x) + ',' + q(y)); },
       strokeText: noop, measureText: t => ({ width: (t ? String(t).length : 0) * 8 }),
-      drawImage: (img, x, y, w, h) => { C.drawImage++; N.drawImage++; T.push('D' + q(x) + ',' + q(y) + ',' + q(w) + ',' + q(h) + '#' + (img && img.width ? img.width + 'x' + img.height : '?')); },
+      drawImage: (img, x, y, w, h, ...rest) => { C.drawImage++; N.drawImage++; T.push('D' + q(x) + ',' + q(y) + ',' + q(w) + ',' + q(h) + (rest.length ? '|' + rest.map(q).join(',') : '') + '#' + (img && img.width ? img.width + 'x' + img.height : '?')); },
       createRadialGradient: () => grad, createLinearGradient: () => grad, createPattern: () => null,
       getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
       putImageData: noop,
@@ -713,8 +713,11 @@ test('集成：远征模式渲染——层图接管地图、灰模地形块上�
   assert.ok(S.camCY >= half - .01 && S.camCY <= S.N - 1 - half + .01, '相机 Y 应夹在 [half, N-1-half]：' + S.camCY);
   const hx = S.pl[0].body[0].x, hy = S.pl[0].body[0].y;
   assert.ok(Math.abs(S.camCX - hx) <= half + 1 && Math.abs(S.camCY - hy) <= half + 1, '相机应跟到蛇头附近（死区内）');
-  const board = H.created.find(c => c !== H.cv && typeof c.getContext === 'function' && c.getContext('2d')._t && c.width === H.cv.width && c.height === H.cv.height);
-  assert.ok(board, '静态层画布应存在，且与主画布同背店尺寸');
+  const board = H.created.filter(c => c !== H.cv && typeof c.getContext === 'function' && c.getContext('2d')._t)
+    .sort((a, b) => b.width - a.width)[0];
+  assert.ok(board, '静态层画布应存在（远征＝世界区域，比视口大一圈）');
+  assert.ok(board.width > H.cv.width && board.height > H.cv.height,
+    '远征静态层要比主画布大（留出平移余量）：' + board.width + '×' + board.height + ' vs ' + H.cv.width + '×' + H.cv.height);
 });
 
 /* ---------- Stage 1：经典模式的相机偏移必须恒为 0（画面逐字等于 2.0） ---------- */
@@ -759,7 +762,8 @@ test('集成：上台面是「爬」上去的——插值高度沿同一条曲�
 test('集成：远征渲染成本——地形块每帧绘制量有预算，静态层按 2 格 margin 才重建', () => {
   const H = makeDom({ search: '?mode=expedition&level=test-24&autostart=1', dpr: 2 });
   boot(H);
-  const board = () => H.created.find(c => c !== H.cv && typeof c.getContext === 'function' && c.getContext('2d')._t && c.width === H.cv.width && c.height === H.cv.height);
+  const board = () => H.created.filter(c => c !== H.cv && typeof c.getContext === 'function' && c.getContext('2d')._t)
+    .sort((a, b) => b.width - a.width)[0];
   H.key('KeyW');
   autoPlay(H, 12);                                   // 先跑掉启动帧，取一个稳定基线
   const bd = board();
@@ -780,4 +784,20 @@ test('集成：远征渲染成本——地形块每帧绘制量有预算，静�
   // 优化记录：隐藏面剔除（成排墙只画端面）+ items 只算视口 +1 格，把 2326.4 条/帧压到 1536.4。
   assert.ok(perFrame >= 400 && perFrame <= 2000, '远征每帧绘制量应在预算内：' + perFrame.toFixed(1));
   assert.ok(rebuilds <= 12, '相机每帧重建静态层会白烧算力（应只在越过 2 格 margin 时重建）：' + rebuilds + ' 次');
+  // 地板平移：静态层每帧按相机平移贴一次（带裁剪的 9 参贴图），而不是「相机过格就整块重画」
+  const pans = main._t.filter(s => typeof s === 'string' && s.startsWith('D') && s.includes('|') && s.endsWith('#' + bd.width + 'x' + bd.height))
+    .map(s => s.slice(1, s.indexOf('#')).split('|')[0].split(',').map(Number));   // [源 x, 源 y, 源宽, 源高]（背店像素）
+  assert.ok(pans.length >= 100, '静态层应逐帧平移贴图（不再随相机重画）：' + pans.length + ' 次');
+  const short = pans.filter(a => a[2] < H.cv.width - 2 || a[3] < H.cv.height - 2);
+  assert.equal(short.length, 0, '静态层必须完整盖住视口（短了就露背景）：' + short.length + ' 帧露白');
+  // 相机平滑：每帧位移远小于一格（一格 = 15 逻辑 px）；旧实现是整格跳，这正是「一闪一闪」的根源
+  let maxD = 0, moves = 0, prev = H.S.camCX;
+  for (let i = 0; i < 40; i++) {
+    autoPlay(H, 1);
+    const d = Math.abs(H.S.camCX - prev); prev = H.S.camCX;
+    if (d > .01) moves++;
+    if (d > maxD) maxD = d;
+  }
+  assert.ok(maxD < 8, '相机每帧位移应远小于一格（整格跳 = 15）：' + maxD.toFixed(2));
+  assert.ok(moves >= 8, '相机应逐帧连续移动，而不是隔一段才跳一次：' + moves + '/40');
 });
