@@ -237,3 +237,42 @@ test('插值时钟：每个移动步的插值起点取渲染时钟（moveT === S
   assert.ok(S.now >= S.last, `S.now(${S.now}) 不应早于游戏时钟 S.last(${S.last})`);
   assert.ok(p.moveP > 0, 'moveP 应为正的插值时长');
 });
+
+/* ---------- 经典模式行为锁：定种子 + 固定输入脚本 → 状态摘要逐字节稳定（Stage 2 改地形规则时的护栏） ---------- */
+test('经典模式行为锁：固定种子与输入脚本跑 1200 tick，状态摘要恒定', () => {
+  const sb = load('?seed=20261025'); const SN = sb.Snake;
+  SN.api.startDaily(20261025); SN.api.start();               // 确定性随机流：同种子必然同一条食物序列
+  const S = SN.S, p = S.pl[0], KEYS = ['up', 'right', 'down', 'left'];
+  const V = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const CAND = { up: [[0, -1], [-1, 0]], down: [[1, 0], [0, 1]], left: [[-1, 0], [0, 1]], right: [[0, -1], [1, 0]] };
+  const eq = (a, b) => a[0] === b[0] && a[1] === b[1];
+  const free = (x, y) => x >= 1 && y >= 1 && x < S.N - 1 && y < S.N - 1 && !p.body.some(s => s.x === x && s.y === y);
+  const space = v => {                                       // 沿该方向向量还能走几格（留 1 格边距 + 避自身）
+    let n = 0, x = p.body[0].x, y = p.body[0].y;
+    for (let k = 1; k <= 6; k++) { x += v[0]; y += v[1]; if (!free(x, y)) break; n++; }
+    return n;
+  };
+  let h = 2166136261 >>> 0, ticks = 0;                       // FNV-1a 摘要
+  const mix = s => { for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } };
+  for (let i = 0; i < 1200 && S.state !== 'over'; i++) {
+    if (i % 2 === 0) {                                       // 每 2 tick（20ms）决策一次：远早于一次移动（150ms）
+      const ref = p.queue.length ? p.queue[p.queue.length - 1] : p.dir, f = S.foods[0];
+      let best = null, bestScore = -1e9;
+      for (const d of KEYS) {                                // 固定次序遍历 ⇒ 完全确定
+        const [c1, c2] = CAND[d];
+        if (eq(c1, ref) || eq(c2, ref)) continue;            // 该键会被 steer() 整键忽略
+        const res = eq([-c1[0], -c1[1]], ref) ? c2 : c1;     // 与 core.steer() 同规则算出落点方向
+        const sc = space(res) * 100 - (Math.abs(p.body[0].x + res[0] - f.x) + Math.abs(p.body[0].y + res[1] - f.y));
+        if (sc > bestScore) { bestScore = sc; best = d; }    // 先要活路（前瞻空格数），再贪食物
+      }
+      if (best) SN.api.press(0, best);
+    }
+    stepOnce(sb); ticks = i + 1;
+    if (i % 10 === 0) mix([S.tickN, S.state, p.body[0].x, p.body[0].y, p.body.length, p.score,
+      S.foods.map(f => f.x + ',' + f.y).join('|'), S.gold ? S.gold.x + ',' + S.gold.y : '-',
+      S.stats.food, S.stats.gold].join('/'));
+  }
+  assert.ok(ticks > 60, '至少要跑满 60 tick 这段锁才有意义，实际 ' + ticks);
+  // 摘要涵盖：每 10 tick 的头部坐标/长度/分数/食物序列/金苹果/吃到数 —— 任何经典规则漂移都会变
+  assert.equal(h >>> 0, 0xe692ec99, '经典模式行为摘要变了：' + (h >>> 0).toString(16) + '（ticks=' + ticks + '）');
+});
