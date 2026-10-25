@@ -46,13 +46,14 @@ window.Snake = window.Snake || {};
     camOX = c[0] - S.W / 2; camOY = c[1] - S.H / 2;
   }
   const MARGIN = 2;   // 静态层比视口多画 2 格，相机越过 margin 才重建（规格 §4）
+  const ITEM_MARGIN = 1;   // items 只多算 1 格：不可见格不参与逐帧绘制（规格 §4）
   let bX0 = 0, bY0 = 0, bX1 = -1, bY1 = -1;   // 当前静态层覆盖的格范围
-  function viewBounds() {
+  function viewBounds(mg = MARGIN) {
     if (!S.T) return { x0: 0, y0: 0, x1: S.N - 1, y1: S.N - 1 };   // 经典：整块棋盘
     const half = S.VIEW_N / 2;
     return {
-      x0: Math.max(0, Math.floor(S.camCX - half) - MARGIN), y0: Math.max(0, Math.floor(S.camCY - half) - MARGIN),
-      x1: Math.min(S.N - 1, Math.ceil(S.camCX + half) + MARGIN), y1: Math.min(S.N - 1, Math.ceil(S.camCY + half) + MARGIN)
+      x0: Math.max(0, Math.floor(S.camCX - half) - mg), y0: Math.max(0, Math.floor(S.camCY - half) - mg),
+      x1: Math.min(S.N - 1, Math.ceil(S.camCX + half) + mg), y1: Math.min(S.N - 1, Math.ceil(S.camCY + half) + mg)
     };
   }
   const glowCache = new Map();           // 颜色+alpha → 预渲染径向光晕精灵（替代逐帧 createRadialGradient）
@@ -176,6 +177,12 @@ window.Snake = window.Snake || {};
   const BLK = 9;                                    // 每层高度（px）
   const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（灰模，与皮肤无关）
   const liftOf = (x, y) => S.T ? ((S.T.topWalk(x, y) || { h: 0 }).h) * BLK : 0;   // 实体站在高台上的抬升
+  const blkTop = (x, y) => {   // 该格「地块」的顶面高度（px）：平地 0；墙/高台/桥面取最高层
+    const ls = S.T && S.T.at(x, y); if (!ls) return 0;
+    let m = 0;
+    for (const l of ls) if (!(l.walkable && l.h === 0)) m = Math.max(m, l.h);
+    return m * BLK;
+  };
   function drawTerr(o) {
     const t = o.terr, bot = (t.lower && t.lower.walkable ? t.lower.h : 0) * BLK, top = t.h * BLK;
     const cx = PX(o.x, o.y), cy = PY(o.x, o.y) + K.HH, a = K.HW * .94, b = K.HH * .94;
@@ -186,8 +193,9 @@ window.Snake = window.Snake || {};
       poly([[cx - a * .55, cy - top + b * .5], [cx - a * .55 + pw, cy - top + b * .5], [cx - a * .55 + pw, cy + b * .5], [cx - a * .55, cy + b * .5]], TERR_C[2]);
       poly([[cx + a * .55 - pw, cy - top + b * .5], [cx + a * .55, cy - top + b * .5], [cx + a * .55, cy + b * .5], [cx + a * .55 - pw, cy + b * .5]], TERR_C[1]);
     }
-    poly([[cx - a, cy - top], [cx, cy + b - top], [cx, cy + b - bot], [cx - a, cy - bot]], TERR_C[1]);
-    poly([[cx + a, cy - top], [cx, cy + b - top], [cx, cy + b - bot], [cx + a, cy - bot]], TERR_C[2]);
+    // 被前排同高/更高的地块挡住的侧面直接不画（成排的墙能省掉大半填充；等距下左面被 (x,y+1) 挡、右面被 (x+1,y) 挡）
+    if (top > blkTop(o.x, o.y + 1)) poly([[cx - a, cy - top], [cx, cy + b - top], [cx, cy + b - bot], [cx - a, cy - bot]], TERR_C[1]);
+    if (top > blkTop(o.x + 1, o.y)) poly([[cx + a, cy - top], [cx, cy + b - top], [cx, cy + b - bot], [cx + a, cy - bot]], TERR_C[2]);
     diamond(cx, cy - top, a, b, t.kind === 'wall' ? TERR_C[2] : TERR_C[0]);   // 墙顶压暗，和台面区分
   }
   /* ---------- 特效（吃食/撞击/胜利特效由 particles.js 对象池负责） ---------- */
@@ -414,12 +422,14 @@ window.Snake = window.Snake || {};
     let ic = 0;   // 画家算法排序表：对象池复用，逐帧零分配
     const pushItem = (x, y, i, j, n, head, dead, food, gold, terr, zb) => { let o = items[ic]; if (!o) o = items[ic] = {}; o.x = x; o.y = y; o.i = i; o.j = j; o.n = n; o.head = head; o.dead = dead; o.food = food; o.gold = gold; o.terr = terr; o.zb = zb; ic++; };
     if (S.T) {   // 远征：地形块也进同一套深度排序（只画不可走层或 h>0 的层；平地不画块）
-      const vb = viewBounds();
+      const vb = viewBounds(ITEM_MARGIN);
       for (let y = vb.y0; y <= vb.y1; y++) for (let x = vb.x0; x <= vb.x1; x++) {
         const ls = S.T.at(x, y); if (!ls) continue;
         for (let k = 0; k < ls.length; k++) {
           const l = ls[k];
           if (l.walkable && l.h === 0) continue;
+          const sx = PX(x, y), sy = PY(x, y);   // 屏幕外一律不参与 items（等距下方形范围的四角看不见）
+          if (sx < -K.TW || sx > S.W + K.TW || sy < -K.TH * 4 || sy > S.H + K.TH * 4) continue;
           pushItem(x, y, 0, 0, 0, false, false, false, false, { h: l.h, lyr: l.h, kind: l.kind, walkable: l.walkable, lower: ls[k - 1] || null }, 0);
         }
       }

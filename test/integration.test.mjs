@@ -713,7 +713,7 @@ test('集成：远征模式渲染——层图接管地图、灰模地形块上�
   assert.ok(S.camCY >= half - .01 && S.camCY <= S.N - 1 - half + .01, '相机 Y 应夹在 [half, N-1-half]：' + S.camCY);
   const hx = S.pl[0].body[0].x, hy = S.pl[0].body[0].y;
   assert.ok(Math.abs(S.camCX - hx) <= half + 1 && Math.abs(S.camCY - hy) <= half + 1, '相机应跟到蛇头附近（死区内）');
-  const board = H.created.find(c => c !== H.cv && c.width === H.cv.width && c.height === H.cv.height);
+  const board = H.created.find(c => c !== H.cv && typeof c.getContext === 'function' && c.getContext('2d')._t && c.width === H.cv.width && c.height === H.cv.height);
   assert.ok(board, '静态层画布应存在，且与主画布同背店尺寸');
 });
 
@@ -736,4 +736,31 @@ test('集成：远征小地图——只在远征显示并重绘，经典模式�
   const A = makeDom({ search: '', dpr: 2 }); boot(A); autoPlay(A, 40);
   assert.ok(!A.document.body.classList.contains('mm'), '经典模式不该显示小地图');
   assert.equal(A.byId.mm.getContext('2d')._t.length, 0, '经典模式不该在小地图上画任何东西');
+});
+
+/* ---------- Stage 1：远征渲染成本（相机 + 地形块不能把每帧绘制量拉爆） ---------- */
+test('集成：远征渲染成本——地形块每帧绘制量有预算，静态层按 2 格 margin 才重建', () => {
+  const H = makeDom({ search: '?mode=expedition&level=test-24&autostart=1', dpr: 2 });
+  boot(H);
+  const board = () => H.created.find(c => c !== H.cv && typeof c.getContext === 'function' && c.getContext('2d')._t && c.width === H.cv.width && c.height === H.cv.height);
+  H.key('KeyW');
+  autoPlay(H, 12);                                   // 先跑掉启动帧，取一个稳定基线
+  const bd = board();
+  assert.ok(bd, '静态层画布应已创建');
+  const btrace = () => bd.getContext('2d')._t.length;   // 轨迹在 ctx 上，不在 canvas 上
+  const main = H.cv.getContext('2d');
+  const m0 = main._t.length, b0 = btrace();
+  let rebuilds = 0, last = b0;
+  for (let k = 0; k < 8; k++) {                      // 分 8 段采样，看静态层重建频率
+    autoPlay(H, 15);
+    const now = btrace();
+    if (now - last > 500) rebuilds++;                // 一次重建是上千条绘制，远超普通帧
+    last = now;
+  }
+  const perFrame = (main._t.length - m0) / 120;
+  // 实测基线（seed 20261025 / 120 帧 / dpr2）：远征 1536.4 条/帧；经典 12×12 是 326.9 条/帧。
+  // 远征视口 18×18 = 经典的 2.25 倍格数、每格还是立体地块 ⇒ 预算给到经典的 ~6 倍以内；
+  // 优化记录：隐藏面剔除（成排墙只画端面）+ items 只算视口 +1 格，把 2326.4 条/帧压到 1536.4。
+  assert.ok(perFrame >= 400 && perFrame <= 2000, '远征每帧绘制量应在预算内：' + perFrame.toFixed(1));
+  assert.ok(rebuilds <= 12, '相机每帧重建静态层会白烧算力（应只在越过 2 格 margin 时重建）：' + rebuilds + ' 次');
 });
