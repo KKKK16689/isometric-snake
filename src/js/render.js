@@ -213,7 +213,7 @@ window.Snake = window.Snake || {};
     finally { camOX = kx; camOY = ky; ctx = main; }
   }
   function paintTiles(b, x0, y0, x1, y1, world) {
-    const dark = isDarkBg(), lw = 1 / cssK;   // 网格/倒角线宽 = 1 CSS px（不随显示缩放变粗）
+          const dark = isDarkBg(), lw = 1 / cssK;   // 网格/倒角线宽 = 1 CSS px（不随显示缩放变粗）
     let skirt = null;   // 经典：整块棋盘的台缘（远征视口在地图内部，台缘不可见 ⇒ 不画）
     if (!S.T && !world) {
       const l = [snap(S.OX - S.N * K.HW), snap(K.OY + S.N * K.HH)], r = [snap(S.OX + S.N * K.HW), snap(K.OY + S.N * K.HH)], bo = [snap(S.OX), snap(K.OY + S.N * K.TH)];
@@ -222,6 +222,18 @@ window.Snake = window.Snake || {};
     }
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const sx = snap(PX(x, y)), sy = snap(PY(x, y) + K.HH);   // 瓦片中心：对齐设备像素，边缘不虚
+      const lavaT = S.T && (() => { const l0 = S.T.layerAt(x, y, 0); return !!l0 && l0.kind === 'lava'; })();
+            if (lavaT) {   // 熔岩地块：暗红底 + 亮橙裂纹 + 中心余烬（静态层一次画好，不参与逐帧开销）
+              diamond(sx, sy, K.HW, K.HH, '#2A0F0A');
+              ctx.strokeStyle = 'rgba(255,122,42,.85)'; ctx.lineWidth = 1.6 / cssK;
+              ctx.beginPath();
+              ctx.moveTo(sx - K.HW * .52, sy); ctx.lineTo(sx - K.HW * .12, sy - K.HH * .34);
+              ctx.lineTo(sx + K.HW * .30, sy + K.HH * .06); ctx.lineTo(sx + K.HW * .5, sy + K.HH * .38);
+              ctx.stroke();
+              diamond(sx, sy, K.HW * .44, K.HH * .44, 'rgba(255,196,80,.8)');
+              continue;
+            }
+      
       const ls = S.T ? S.T.at(x, y) : null;                    // 远征：按层图区分水面（Stage 1 只做灰模 + 硬阻挡）
       const portalL = ls ? ls.find(l => l.kind === 'portal') : null;   // 传送门格：画成醒目的青色漩涡（进静态层 ⇒ 零逐帧成本）
       if (portalL) {
@@ -257,7 +269,8 @@ window.Snake = window.Snake || {};
   const BIOMES = {
     grey: { top: '#8A94A6', left: '#5A6473', right: '#3B4252', strip: null },        // 灰模：测试图与既有两张开阔图
     neon: { top: '#4B5A80', left: '#2C3757', right: '#1B2340', strip: '#5AC8FF' },    // 霓虹都市：偏冷的深蓝楼体 + 青色灯带
-    ruins: { top: '#7C8C63', left: '#4E5A3C', right: '#333C28', strip: null }    // 森林遗迹：苔绿石台（先不画灯带，晚点看效果再说）
+    ruins: { top: '#7C8C63', left: '#4E5A3C', right: '#333C28', strip: null },   // 森林遗迹：苔绿石台（先不画灯带，晚点看效果再说）
+    lava: { top: '#6A5A52', left: '#463832', right: '#2A211D', strip: '#FF8A3D' }     // 火山口：玄武岩 + 岩缝里透出的橙光
   };
   const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（由 syncBiome 按关卡 biome 覆写）
   let STRIP = null;                                 // 楼面灯带色（biome 提供；灰模为 null ⇒ 不画）
