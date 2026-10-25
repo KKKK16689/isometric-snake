@@ -10,6 +10,7 @@ window.Snake = window.Snake || {};
 
   /* ---------- ASCII → 层 ---------- */
   function layersOf(ch, x, y) {
+    if (ch === 'L') return [{ h: 0, walkable: false, kind: 'lava' }];   // 熔岩：不可走，只做硬阻挡（暂停/重开等规则不受影响）
     switch (ch) {
       case '.': case '@': case '$': return [{ h: 0, kind: 'ground', walkable: true, portal: null }];
       case '1': return [{ h: 1, kind: 'ground', walkable: true, portal: null }];
