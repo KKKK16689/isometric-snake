@@ -530,7 +530,8 @@ window.Snake = window.Snake || {};
     setSeed((+qs.get('seed') | 0) || dateSeed());
   }
   if (qs.get('level')) S.levelId = qs.get('level');
-  if (S.mode === 'expedition') loadLevel(S.levelId || 'test-24');   // ?mode=expedition&level=test-24 直达
+  // ?mode=expedition&level=test-24 直达：这里只记模式与关卡 id，层图留到 newGame 再建
+  // （core.js 是最先执行的脚本，此刻 levels.js / terrain.js 还没加载，不能在这里调 loadLevel）
   loadStats();
   S.ghostOn = safeGet('iso-snake-ghost-on', '0') === '1';
 
@@ -1266,7 +1267,24 @@ window.Snake = window.Snake || {};
   let foodC = K.shades(pal.food);        // 食物立方体三面色（随主题）
   const GHOST_C = ['#F0F2F5', '#C3C9D4', '#98A0AE'];   // 幽灵回放蛇（半透明灰白，不随主题）
   const GOLD = K.shades('#F2B33D');                    // 金苹果三面色（固定金色）
-  const PX = (x, y) => S.OX + (x - y) * K.HW, PY = (x, y) => K.OY + (x + y) * K.HH;   // K.P 标量版：逐帧热循环零分配
+  let camOX = 0, camOY = 0;   // 世界→屏幕偏移：远征相机用；经典模式恒 0（逐帧绘制与 2.0 完全一致）
+  const PX = (x, y) => S.OX + (x - y) * K.HW - camOX, PY = (x, y) => K.OY + (x + y) * K.HH - camOY;   // K.P 标量版：逐帧热循环零分配
+  /* 相机：把 core 每帧算好的 S.camCX/camCY 投到画布中心（经典模式直接归零） */
+  function camUpdate() {
+    if (!S.T) { camOX = 0; camOY = 0; return; }
+    const c = K.P(S.camCX, S.camCY);
+    camOX = c[0] - S.W / 2; camOY = c[1] - S.H / 2;
+  }
+  const MARGIN = 2;   // 静态层比视口多画 2 格，相机越过 margin 才重建（规格 §4）
+  let bX0 = 0, bY0 = 0, bX1 = -1, bY1 = -1;   // 当前静态层覆盖的格范围
+  function viewBounds() {
+    if (!S.T) return { x0: 0, y0: 0, x1: S.N - 1, y1: S.N - 1 };   // 经典：整块棋盘
+    const half = S.VIEW_N / 2;
+    return {
+      x0: Math.max(0, Math.floor(S.camCX - half) - MARGIN), y0: Math.max(0, Math.floor(S.camCY - half) - MARGIN),
+      x1: Math.min(S.N - 1, Math.ceil(S.camCX + half) + MARGIN), y1: Math.min(S.N - 1, Math.ceil(S.camCY + half) + MARGIN)
+    };
+  }
   const glowCache = new Map();           // 颜色+alpha → 预渲染径向光晕精灵（替代逐帧 createRadialGradient）
   function glowSprite(col, a) {
     const key = col + '|' + a;
@@ -1339,12 +1357,13 @@ window.Snake = window.Snake || {};
   }
   let boardCv = null;                    // 地板离屏画布复用：重建只重画，不再新建 canvas
   function drawBoard() {
-    if (!boardCache) {
+    const b = viewBounds();
+    if (!boardCache || b.x0 !== bX0 || b.y0 !== bY0 || b.x1 !== bX1 || b.y1 !== bY1) {   // 相机移动超过 margin：重建静态层
       if (!boardCv) boardCv = document.createElement('canvas');
       boardCv.width = cv.width; boardCv.height = cv.height;   // 赋 width 同时清屏（与主画布同背店尺寸）
       const main = ctx; ctx = boardCv.getContext('2d'); ctx.setTransform(scale, 0, 0, scale, 0, 0);
-      try { paintBoard(); } finally { ctx = main; }
-      boardCache = boardCv;
+      try { paintBoard(b); } finally { ctx = main; }
+      boardCache = boardCv; bX0 = b.x0; bY0 = b.y0; bX1 = b.x1; bY1 = b.y1;
     }
     ctx.drawImage(boardCache, 0, 0, S.W, S.H);
   }
@@ -1355,21 +1374,48 @@ window.Snake = window.Snake || {};
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(b[0], b[1] + 8); ctx.lineTo(a[0], a[1] + 8); ctx.closePath(); ctx.fill();
   }
-  function paintBoard() {
-    const l = [snap(S.OX - S.N * K.HW), snap(K.OY + S.N * K.HH)], r = [snap(S.OX + S.N * K.HW), snap(K.OY + S.N * K.HH)], b = [snap(S.OX), snap(K.OY + S.N * K.TH)];
-    sideGrad(l, b, pal.floorLeft); sideGrad(r, b, pal.floorRight);
+  function paintBoard(b) {
     const dark = isDarkBg(), lw = 1 / cssK;   // 网格/倒角线宽 = 1 CSS px（不随显示缩放变粗）
-    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) {
+    let skirt = null;   // 经典：整块棋盘的台缘（远征视口在 24×24 地图内部，台缘不可见 ⇒ 不画）
+    if (!S.T) {
+      const l = [snap(S.OX - S.N * K.HW), snap(K.OY + S.N * K.HH)], r = [snap(S.OX + S.N * K.HW), snap(K.OY + S.N * K.HH)], bo = [snap(S.OX), snap(K.OY + S.N * K.TH)];
+      sideGrad(l, bo, pal.floorLeft); sideGrad(r, bo, pal.floorRight);
+      skirt = { l, r, bo };
+    }
+    for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
       const sx = snap(PX(x, y)), sy = snap(PY(x, y) + K.HH);   // 瓦片中心：对齐设备像素，边缘不虚
-      diamond(sx, sy, K.HW, K.HH, (x + y) % 2 ? pal.floorTop : pal.floorRight);
-      ctx.strokeStyle = pal.grid; ctx.lineWidth = lw; // 网格线随主题
+      const ls = S.T ? S.T.at(x, y) : null;                    // 远征：按层图区分水面（Stage 1 只做灰模 + 硬阻挡）
+      const water = !!ls && ls.some(l => l.kind === 'water') && !ls.some(l => l.kind === 'deck');
+      diamond(sx, sy, K.HW, K.HH, water ? '#16324F' : ((x + y) % 2 ? pal.floorTop : pal.floorRight));
+      ctx.strokeStyle = water ? 'rgba(120,190,255,.18)' : pal.grid; ctx.lineWidth = lw; // 网格线随主题
       ctx.beginPath(); ctx.moveTo(sx, sy - K.HH); ctx.lineTo(sx + K.HW, sy); ctx.lineTo(sx, sy + K.HH); ctx.lineTo(sx - K.HW, sy); ctx.closePath(); ctx.stroke();
+      if (water) continue;                                     // 水面不铺主题地板图案
       ctx.strokeStyle = dark ? 'rgba(255,255,255,.07)' : 'rgba(255,255,255,.5)'; ctx.lineWidth = lw; // 瓦片倒角：上两边高光
       ctx.beginPath(); ctx.moveTo(sx - K.HW, sy); ctx.lineTo(sx, sy - K.HH); ctx.lineTo(sx + K.HW, sy); ctx.stroke();
       Snake.Patterns.draw(Snake.theme.current.pattern, ctx, sx, sy, pal, x, y); // 主题地板图案（缓存层）
     }
-    ctx.strokeStyle = K.rgba(pal.glow, .45); ctx.lineWidth = lw; // 台缘描边光
-    ctx.beginPath(); ctx.moveTo(snap(S.OX), snap(K.OY)); ctx.lineTo(r[0], r[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(l[0], l[1]); ctx.closePath(); ctx.stroke();
+    if (skirt) {   // 台缘描边光（顺序与 2.0 一致，视觉锁依赖）
+      ctx.strokeStyle = K.rgba(pal.glow, .45); ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.moveTo(snap(S.OX), snap(K.OY)); ctx.lineTo(skirt.r[0], skirt.r[1]); ctx.lineTo(skirt.bo[0], skirt.bo[1]); ctx.lineTo(skirt.l[0], skirt.l[1]); ctx.closePath(); ctx.stroke();
+    }
+  }
+  /* ---------- 地形块（Stage 1 灰模：墙 / 高台 / 桥面，参与同一套深度排序） ---------- */
+  const BLK = 9;                                    // 每层高度（px）
+  const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（灰模，与皮肤无关）
+  const liftOf = (x, y) => S.T ? ((S.T.topWalk(x, y) || { h: 0 }).h) * BLK : 0;   // 实体站在高台上的抬升
+  function drawTerr(o) {
+    const t = o.terr, bot = (t.lower && t.lower.walkable ? t.lower.h : 0) * BLK, top = t.h * BLK;
+    const cx = PX(o.x, o.y), cy = PY(o.x, o.y) + K.HH, a = K.HW * .94, b = K.HH * .94;
+    if (top <= bot) return;
+    if (t.kind === 'deck') {   // 桥面：地面投影 + 两根斜柱（简报 Q5）
+      diamond(cx, cy, a * .7, b * .7, 'rgba(0,0,0,.22)');
+      const pw = a * .16;
+      poly([[cx - a * .55, cy - top + b * .5], [cx - a * .55 + pw, cy - top + b * .5], [cx - a * .55 + pw, cy + b * .5], [cx - a * .55, cy + b * .5]], TERR_C[2]);
+      poly([[cx + a * .55 - pw, cy - top + b * .5], [cx + a * .55, cy - top + b * .5], [cx + a * .55, cy + b * .5], [cx + a * .55 - pw, cy + b * .5]], TERR_C[1]);
+    }
+    poly([[cx - a, cy - top], [cx, cy + b - top], [cx, cy + b - bot], [cx - a, cy - bot]], TERR_C[1]);
+    poly([[cx + a, cy - top], [cx, cy + b - top], [cx, cy + b - bot], [cx + a, cy - bot]], TERR_C[2]);
+    diamond(cx, cy - top, a, b, t.kind === 'wall' ? TERR_C[2] : TERR_C[0]);   // 墙顶压暗，和台面区分
   }
   /* ---------- 特效（吃食/撞击/胜利特效由 particles.js 对象池负责） ---------- */
   const STARS = Array.from({ length: 40 }, (_, i) => [K.fr(i * 3 + 1), K.fr(i * 3 + 2), K.fr(i * 3 + 3) > .8 ? 2 : 1]);
@@ -1484,6 +1530,7 @@ window.Snake = window.Snake || {};
   }
   function draw(t) {
     if (qDirty) { qDirty = false; applyCanvasSize(); }   // 自适应画质换档：在帧首重建，避免半帧换尺寸
+    camUpdate();                                         // 相机：远征跟随蛇头（经典模式恒 0）
     ctx.clearRect(0, 0, S.W, S.H);
     if (pal.star) STARS.forEach((s, i) => { // 无星空主题（亮色）不绘星空
       ctx.fillStyle = K.rgba(pal.star, (.25 + .35 * Math.sin(t / 700 + i)).toFixed(2));
@@ -1556,28 +1603,41 @@ window.Snake = window.Snake || {};
       }
     }
     let ic = 0;   // 画家算法排序表：对象池复用，逐帧零分配
-    const pushItem = (x, y, i, j, n, head, dead, food, gold) => { let o = items[ic]; if (!o) o = items[ic] = {}; o.x = x; o.y = y; o.i = i; o.j = j; o.n = n; o.head = head; o.dead = dead; o.food = food; o.gold = gold; ic++; };
-    S.pl.forEach((p, i) => PTS[i].forEach((s, j) => pushItem(s.x, s.y, i, j, p.body.length, j === 0, p.dead, false, false)));
-    S.foods.forEach(f => pushItem(f.x, f.y, 0, 0, 0, false, false, true, false));
-    if (S.gold) pushItem(S.gold.x, S.gold.y, 0, 0, 0, false, false, false, true);
+    const pushItem = (x, y, i, j, n, head, dead, food, gold, terr, zb) => { let o = items[ic]; if (!o) o = items[ic] = {}; o.x = x; o.y = y; o.i = i; o.j = j; o.n = n; o.head = head; o.dead = dead; o.food = food; o.gold = gold; o.terr = terr; o.zb = zb; ic++; };
+    if (S.T) {   // 远征：地形块也进同一套深度排序（只画不可走层或 h>0 的层；平地不画块）
+      const vb = viewBounds();
+      for (let y = vb.y0; y <= vb.y1; y++) for (let x = vb.x0; x <= vb.x1; x++) {
+        const ls = S.T.at(x, y); if (!ls) continue;
+        for (let k = 0; k < ls.length; k++) {
+          const l = ls[k];
+          if (l.walkable && l.h === 0) continue;
+          pushItem(x, y, 0, 0, 0, false, false, false, false, { h: l.h, lyr: l.h, kind: l.kind, walkable: l.walkable, lower: ls[k - 1] || null }, 0);
+        }
+      }
+    }
+    S.pl.forEach((p, i) => PTS[i].forEach((s, j) => { const c = p.body[j] || s; pushItem(s.x, s.y, i, j, p.body.length, j === 0, p.dead, false, false, null, liftOf(c.x, c.y)); }));
+    S.foods.forEach(f => pushItem(f.x, f.y, 0, 0, 0, false, false, true, false, null, liftOf(f.x, f.y)));
+    if (S.gold) pushItem(S.gold.x, S.gold.y, 0, 0, 0, false, false, false, true, null, liftOf(S.gold.x, S.gold.y));
     items.length = ic;
-    items.sort((a, b) => (a.x + a.y) - (b.x + b.y)); // 画家算法：后 → 前
+    items.sort((a, b) => (a.x + a.y) - (b.x + b.y) || (a.terr ? a.terr.lyr : 0) - (b.terr ? b.terr.lyr : 0) || (a.terr ? 0 : 1) - (b.terr ? 0 : 1)); // 画家算法：后→前；同格地形先画、低层先画（规格 §4 深度键）
     for (const o of items) {
+      if (o.terr) { drawTerr(o); continue; }   // 地形块（远征）：墙/高台/桥面，按层高抬升
+      const zb = o.zb || 0;                    // 站在高台上的实体整体抬升（经典模式恒 0）
       if (o.gold) {   // 金苹果：金色立方，最后 2s 闪烁告警（游戏时钟，暂停不闪走）；辉光已在加法通道绘
         const remaining = K.TUNE.goldTtl - (S.last - S.gold.born);
-        const sx = PX(o.x, o.y), sy = PY(o.x, o.y);
+        const sx = PX(o.x, o.y), sy = PY(o.x, o.y) - zb;
         ctx.globalAlpha = remaining < 2000 && Math.floor(remaining / 150) % 2 === 0 ? .3 : 1;
         diamond(sx, sy + K.HH, K.HW * .55, K.HH * .55, 'rgba(0,0,0,.25)');
-        cube(o.x, o.y, .62, 9, 3 + Math.sin(t / 220) * 3, GOLD);
+        cube(o.x, o.y, .62, 9, 3 + Math.sin(t / 220) * 3 + zb, GOLD);
         ctx.globalAlpha = 1;
       } else if (o.food) {
-        const sx = PX(o.x, o.y), sy = PY(o.x, o.y);
+        const sx = PX(o.x, o.y), sy = PY(o.x, o.y) - zb;
         diamond(sx, sy + K.HH, K.HW * .5, K.HH * .5, 'rgba(0,0,0,.25)');
-        cube(o.x, o.y, .55, 8, 3 + Math.sin(t / 250) * 2.5, K.MODES[S.mode].players === 2 ? K.FOOD_PK : foodC);
-      } else if (o.head) cube(o.x, o.y, .98, 9, 0, o.dead ? K.DEAD : S.pl[o.i].sprint ? K.SPRINT_HEAD : K.SK[S.skin[o.i]].head);
+        cube(o.x, o.y, .55, 8, 3 + Math.sin(t / 250) * 2.5 + zb, K.MODES[S.mode].players === 2 ? K.FOOD_PK : foodC);
+      } else if (o.head) cube(o.x, o.y, .98, 9, zb, o.dead ? K.DEAD : S.pl[o.i].sprint ? K.SPRINT_HEAD : K.SK[S.skin[o.i]].head);
       else { // 身体鳞片：向尾部渐细 + 人字缝（光晕已在加法通道合批绘）
         const k = Math.max(0, (o.j - (o.n - 7)) / 7), s = .92 - .32 * k, hg = 8 - 3 * k, col = K.SK[S.skin[o.i]];
-        cube(o.x, o.y, s, hg, 0, col.body);
+        cube(o.x, o.y, s, hg, zb, col.body);
         seam(S.pl[o.i], o.j, o.x, o.y, s, hg, col.body[2]);
       }
     }
