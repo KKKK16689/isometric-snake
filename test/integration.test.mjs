@@ -54,7 +54,7 @@ function makeDom(opts = {}) {
       clearRect: () => { N.clearRect++; }, fillRect: () => { C.fillRect++; N.fillRect++; }, strokeRect: noop,
       beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop, arc: noop, arcTo: noop, ellipse: noop, rect: noop,
       quadraticCurveTo: noop, bezierCurveTo: noop, fill: () => { N.fill++; }, stroke: () => { N.stroke++; }, clip: noop, setLineDash: noop,
-      fillText: () => { C.fillText++; }, strokeText: noop, measureText: t => ({ width: (t ? String(t).length : 0) * 8 }),
+      fillText: (t, x, y) => { C.fillText++; (C.texts ||= []).push([String(t), x, y]); }, strokeText: noop, measureText: t => ({ width: (t ? String(t).length : 0) * 8 }),
       drawImage: () => { C.drawImage++; N.drawImage++; },
       createRadialGradient: () => grad, createLinearGradient: () => grad, createPattern: () => null,
       getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
@@ -526,4 +526,18 @@ test('自适应画质：连续掉帧自动降分辨率（一般不低于 1:1，�
   H.drive(300, 6);                                 // 6ms 富余帧
   const r2 = H.cv.getBoundingClientRect();
   assert.ok(H.cv.width > Math.round(r2.width) + 1, `富余帧 + 冷却结束后应试探升回（${H.cv.width} vs 1:1=${r2.width}）`);
+});
+
+/* ---------- 诊断读数位置：?fps=1 必须画在画布左下角（回归：曾压在左上角的方向罗盘上） ---------- */
+test('诊断读数：?fps=1 画在画布左下角（避开左上罗盘），不带参数时完全不画', () => {
+  const H = makeDom({ search: '?fps=1&autostart=1' }); boot(H); H.drive(30);
+  const hit = (H.C.texts || []).filter(t => /fps/.test(t[0]));
+  assert.ok(hit.length > 0, '?fps=1 应画出读数');
+  const [txt, x, y] = hit[hit.length - 1];
+  const S = H.S;
+  assert.ok(x >= 0 && x < S.W / 2, `读数应在画布左半边（x=${x}，S.W=${S.W}）`);
+  assert.ok(y > S.H * 0.8 && y <= S.H, `读数应贴画布底边（y=${y}，S.H=${S.H}）`);
+  assert.ok(String(txt).length > 4, '读数内容不应为空：' + txt);
+  const H2 = makeDom({}); boot(H2); H2.drive(20);
+  assert.equal((H2.C.texts || []).filter(t => /fps/.test(t[0])).length, 0, '不带 ?fps=1 时不应画读数');
 });
