@@ -522,7 +522,7 @@ test('自适应画质：连续掉帧自动降分辨率（一般不低于 1:1，�
   assert.ok(H.cv.width >= Math.round(r.width * 0.75) - 1, `软渲染也不应低于 0.75 倍 CSS（${H.cv.width} vs ${r.width}）`);
   assert.ok(H.cv.width <= Math.round(r.width * 1.5), `严重掉帧应已明显降档（${H.cv.width}）`);
   // 帧时间富余 + 越过试升冷却 → 升回一档，且清晰度地板回到 1:1 以上
-  H.sb.__t += 20000; H.drive(1, 40);
+  H.sb.__t += 35000; H.drive(1, 40);               // 越过升档冷却（30s，换档要重建背店，别太频繁）
   H.drive(300, 6);                                 // 6ms 富余帧
   const r2 = H.cv.getBoundingClientRect();
   assert.ok(H.cv.width > Math.round(r2.width) + 1, `富余帧 + 冷却结束后应试探升回（${H.cv.width} vs 1:1=${r2.width}）`);
@@ -569,6 +569,15 @@ test('诊断开关与缓出插值：?q=0.6 固定背店倍率且掉帧也不改�
   assert.ok(Math.abs(out.y) < 1e-9, '同格的 y 不应漂移');
   seg(fake, 0, 1000 + 112.5, out);                   // a = 0.75 → 0.953：下一格到来前基本到位
   assert.ok(out.x > 1.95, `a=0.75 时应基本到位（>1.95），实际 ${out.x.toFixed(3)}`);
+
+  // ?span=0.7：视觉到位只用 70% 的时间，其余停在新格上（更「冲」的一档，供 A/B 手感）
+  const Hs = makeDom({ search: '?span=0.7' }); boot(Hs);
+  const segS = Hs.sb.Snake.Render.segPos, out3 = { x: 0, y: 0 };
+  const fakeS = { body: [{ x: 2, y: 0 }, { x: 1, y: 0 }], moveT: 1000, moveTGame: 1000, moveP: 150, grew: false, tailFrom: null };
+  segS(fakeS, 0, 1000 + 90, out3);                   // 60% 格时间：默认档只有 0.867，span=0.7 已 0.986
+  assert.ok(out3.x > 1.95, `?span=0.7 应在 60% 时间就基本到位（>1.95），实际 ${out3.x.toFixed(3)}`);
+  segS(fakeS, 0, 1000 + 120, out3);                  // 80% 格时间：已越过 span ⇒ 停在新格上
+  assert.equal(out3.x, 2, `?span=0.7 越过 70% 后应停在新格（实际 ${out3.x.toFixed(3)}）`);
 
   // ?interp=legacy：core 同时记录游戏时钟（2.0 的插值起点），且它不晚于渲染时钟
   const Hl = makeDom({ search: '?interp=legacy&autostart=1' }); boot(Hl); Hl.api.start(); Hl.key('KeyA'); Hl.drive(40);
