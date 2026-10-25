@@ -10,7 +10,7 @@ import vm from 'node:vm';
 
 const DIR = import.meta.dirname;
 const SRC = path.join(DIR, '..', 'src', 'js');
-const FILES = ['core', 'themes', 'patterns', 'audio', 'particles', 'render', 'ai', 'input'];   // index.html 的 <script> 顺序
+const FILES = ['core', 'levels', 'terrain', 'themes', 'patterns', 'audio', 'particles', 'render', 'ai', 'input'];   // index.html 的 <script> 顺序
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 /* ---------- 最小 DOM 桩 ---------- */
@@ -459,7 +459,7 @@ test('集成：构建产物 index.html 端到端（内联脚本直跑）', () =>
   assert.ok(!/<script\b[^>]*\bsrc=/.test(html), '构建产物不应残留外部 <script src>');
   assert.ok(!/<link\b[^>]*\brel=["']stylesheet["']/i.test(html), '构建产物不应残留外部样式表');
   const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/gi)].map((m, i) => ({ name: 'index.html#script' + i, code: m[1] }));
-  assert.ok(scripts.length >= 9, `内联脚本块数 ${scripts.length} 应 ≥ 9（8 模块 + 启动块）`);
+  assert.ok(scripts.length >= 11, `内联脚本块数 ${scripts.length} 应 ≥ 11（10 模块 + 启动块）`);
   const H = makeDom({ scripts });                 // 启动块随内联脚本自动执行 → 不再手动 boot
   const { Snake } = H.sb;
   for (const k of ['S', 'K', 'api', 'bus', 'theme', 'Audio', 'UI', 'Render', 'Ai', 'hooks']) assert.ok(Snake[k], `Snake.${k} 导出缺失`);
