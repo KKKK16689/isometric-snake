@@ -623,8 +623,8 @@ test('经典模式视觉锁：90 帧绘制轨迹摘要恒定（Stage 1-5 改地�
   const a = digest(20261025), b = digest(7);
   assert.ok(a.ops > 800 && b.ops > 800, '绘制轨迹太短，锁不住画面（' + a.ops + ' / ' + b.ops + ' 条）');
   assert.notEqual(a.h, b.h, '不同种子的轨迹摘要必须不同（否则说明摘要退化成常量、锁不住任何东西）');
-  assert.equal(a.h, 0xe88121c2, '种子 20261025 的绘制轨迹变了：' + a.h.toString(16) + '（' + a.ops + ' 条 / ' + a.n + ' 张画布）');   // 2026-10-25 手感修复：移动首帧改画旧格（不再瞬移一帧），摘要随之更新
-  assert.equal(b.h, 0x90df7f42, '种子 7 的绘制轨迹变了：' + b.h.toString(16) + '（' + b.ops + ' 条 / ' + b.n + ' 张画布）');
+  assert.equal(a.h, 0x4624de5f, '种子 20261025 的绘制轨迹变了：' + a.h.toString(16) + '（' + a.ops + ' 条 / ' + a.n + ' 张画布）');   // 2026-10-25 手感：移动首帧改为「缓出 + 8ms 起势」（按下后首帧就看得见位移），摘要随之更新；绘制条数不变
+  assert.equal(b.h, 0xc5d88f37, '种子 7 的绘制轨迹变了：' + b.h.toString(16) + '（' + b.ops + ' 条 / ' + b.n + ' 张画布）');
 });
 
 /* ---------- 渲染成本护栏：主画布每帧绘制量在预算内；静态地板缓存必须远低于主画布（不许逐帧重画全图） ---------- */
@@ -642,15 +642,17 @@ test('渲染成本护栏：主画布每帧绘制量有预算，静态地板缓�
   assert.ok(board < main * .3, '静态地板缓存的绘制量不该接近主画布（退化成逐帧重画全图了）：board=' + board + ' main=' + main);
 });
 
-/* ---------- 手感契约：移动的首帧必须还画在旧格（不瞬移），随后缓出前进、全程单调 ---------- */
-test('手感契约：移动首帧画旧格不瞬移；半程已走过大部分格子；全程单调不倒退', () => {
+/* ---------- 手感契约：移动首帧就要有可见起势（但不许瞬移），随后缓出前进、全程单调 ---------- */
+test('手感契约：移动首帧即有起势位移（≤0.15 格不瞬移）；半程已走过大部分格子；全程单调不倒退', () => {
   const H = makeDom({ search: '?seed=20261025', dpr: 2 });
   boot(H);
   const R = H.sb.Snake.Render, p = H.S.pl[0], out = {};
+  const LEAD = H.sb.Snake.K.TUNE.moveLead;        // core 在移动那一帧把插值时钟提前这么多（起势，按下后首帧就动）
   p.body = [{ x: 1, y: 1 }, { x: 0, y: 1 }];      // 这一格：从 (0,1) 走到 (1,1)
-  p.moveT = 1000; p.moveTGame = 963; p.moveP = 150; p.grew = true; p.tailFrom = null;
+  p.moveT = 1000 - LEAD; p.moveTGame = 963; p.moveP = 150; p.grew = true; p.tailFrom = null;
   const at = f => { R.segPos(p, 0, 1000 + 150 * f, out); return out.x; };
-  assert.equal(at(0), 0, '移动那一帧必须还画在旧格（同帧里 t 与 moveT 相等），画新格会瞬移一帧再倒回来');
+  const a0 = at(0);
+  assert.ok(a0 > 0 && a0 <= 0.15, '移动那一帧就要有起势位移（>0 且 ≤0.15 格：既不能等下一帧才动，也不能瞬移）：' + a0.toFixed(3));
   assert.ok(at(.5) >= .75, '半程该走完 75% 以上格子（线性只有 50%，缓出＝跟手）：' + at(.5).toFixed(3));
   assert.ok(at(.25) - at(0) > at(1) - at(.75), '缓出应当前快后慢');
   assert.equal(at(1), 1, '一格时间该正好到位');

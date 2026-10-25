@@ -44,7 +44,8 @@ window.Snake = window.Snake || {};
     TUNE: {
       lowFxOn: .032, lowFxOff: .020, lowFxRecover: 120,  // render 帧耗时 EMA：超过 on 降级，低于 off 连续 recover 帧恢复
       comboWindow: 6000, comboBonus: 1,                  // 连击：6s 内持续吃食，第 2 个起每个额外 +1（×2 封顶）
-      goldChance: .12, goldTtl: 6000, goldScore: 3, goldEnergy: 30   // 金苹果：每次吃食后 12% 概率出现，6s 过期，+3 分 +30 能量
+      goldChance: .12, goldTtl: 6000, goldScore: 3, goldEnergy: 30,  // 金苹果：每次吃食后 12% 概率出现，6s 过期，+3 分 +30 能量
+      moveLead: 8                                        // 插值起势：移动那一帧把插值时钟提前 8ms（≈半帧），按下后首帧就看得见位移
     }
   };
 
@@ -246,7 +247,7 @@ window.Snake = window.Snake || {};
         bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, pts: gain, i });
       }
       else p.tailFrom = p.body.pop();
-      p.grew = eat[i] >= 0; p.moveT = S.now > 0 ? S.now : now; p.moveTGame = now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick；moveT 用渲染时钟给插值用，moveTGame 留作 ?interp=legacy 对比
+      p.grew = eat[i] >= 0; p.moveT = S.now > 0 ? S.now - K.TUNE.moveLead : now; p.moveTGame = now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick；moveT 用渲染时钟并提前 moveLead 起势，moveTGame 留作 ?interp=legacy 对比
       if (i === 0) { S.rec.push(hs[i].x, hs[i].y); S.myMoves++; }   // 幽灵录制：p0 每步头格
     });
     if (S.gold) {   // 金苹果拾取：+3 分 +30 能量，不增长、不影响连击（两蛇同 tick 踩上则先手判给 p0）

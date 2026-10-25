@@ -275,12 +275,12 @@ test('屏幕方向键映射：↑↓←→ 按屏幕方向生效（旧表整体�
   }
 });
 
-/* ---------- 插值时钟：moveT 取渲染时钟 S.now，不再落后游戏时钟 S.last ---------- */
-test('插值时钟：每个移动步的插值起点取渲染时钟（moveT === S.now ≥ S.last）', () => {
+/* ---------- 插值时钟：moveT 取渲染时钟 S.now 并提前 moveLead 起势，不再落后游戏时钟 S.last ---------- */
+test('插值时钟：每个移动步的插值起点取渲染时钟并提前起势（moveT === S.now - moveLead）', () => {
   const sb = load(); sb.Snake.api.setMode('normal'); sb.Snake.api.start();
-  const S = sb.Snake.S, p = S.pl[0];
+  const S = sb.Snake.S, p = S.pl[0], LEAD = sb.Snake.K.TUNE.moveLead;
   moveOnce(sb, p);
-  assert.equal(p.moveT, S.now, 'moveT 应等于渲染时钟 S.now（旧实现取 S.last，最多落后一个 tick）');
+  assert.equal(p.moveT, S.now - LEAD, `moveT 应为渲染时钟减去起势量（S.now ${S.now} - 起势 ${LEAD}）；旧实现取 S.last 会最多落后一个 tick ⇒ 起步慢半拍`);
   assert.ok(S.now >= S.last, `S.now(${S.now}) 不应早于游戏时钟 S.last(${S.last})`);
   assert.ok(p.moveP > 0, 'moveP 应为正的插值时长');
 });
