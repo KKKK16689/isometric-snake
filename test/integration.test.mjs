@@ -44,22 +44,35 @@ function makeDom(opts = {}) {
   const noop = () => {};
   function makeCtx(cvEl) {
     const N = { fillRect: 0, fill: 0, stroke: 0, clearRect: 0, drawImage: 0 };   // 本画布计数器：验证“静态层不逐帧重画”
-    return {
-      _n: N,
+    const T = [];                                                                // 绘制轨迹：视觉回归锁用（两位小数，含样式）
+    const q = v => Math.round((v || 0) * 100) / 100;
+    const ctx = {
+      _n: N, _t: T,
       canvas: cvEl,
       fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, globalCompositeOperation: 'source-over',
       shadowBlur: 0, shadowColor: '', font: '', textAlign: 'start', textBaseline: 'alphabetic',
       filter: 'none', lineCap: 'butt', lineJoin: 'miter', imageSmoothingEnabled: true,
-      save: noop, restore: noop, translate: noop, scale: noop, rotate: noop, setTransform: noop, transform: noop,
-      clearRect: () => { N.clearRect++; }, fillRect: () => { C.fillRect++; N.fillRect++; }, strokeRect: noop,
-      beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop, arc: noop, arcTo: noop, ellipse: noop, rect: noop,
-      quadraticCurveTo: noop, bezierCurveTo: noop, fill: () => { N.fill++; }, stroke: () => { N.stroke++; }, clip: noop, setLineDash: noop,
-      fillText: (t, x, y) => { C.fillText++; (C.texts ||= []).push([String(t), x, y]); }, strokeText: noop, measureText: t => ({ width: (t ? String(t).length : 0) * 8 }),
-      drawImage: () => { C.drawImage++; N.drawImage++; },
+      save: noop, restore: noop, translate: noop, scale: noop, rotate: noop, clip: noop, setLineDash: noop,
+      setTransform: noop, transform: noop,
+      clearRect: (x, y, w, h) => { N.clearRect++; T.push('C' + q(x) + ',' + q(y) + ',' + q(w) + ',' + q(h)); },
+      fillRect: (x, y, w, h) => { C.fillRect++; N.fillRect++; T.push('R' + q(x) + ',' + q(y) + ',' + q(w) + ',' + q(h) + '@' + ctx.fillStyle); },
+      strokeRect: noop,
+      beginPath: noop, closePath: noop,
+      moveTo: (x, y) => { T.push('M' + q(x) + ',' + q(y)); },
+      lineTo: (x, y) => { T.push('L' + q(x) + ',' + q(y)); },
+      arc: (x, y, r, a0, a1) => { T.push('A' + q(x) + ',' + q(y) + ',' + q(r) + ',' + q(a0) + ',' + q(a1)); },
+      arcTo: noop, ellipse: noop, rect: (x, y, w, h) => { T.push('r' + q(x) + ',' + q(y) + ',' + q(w) + ',' + q(h)); },
+      quadraticCurveTo: noop, bezierCurveTo: noop,
+      fill: () => { N.fill++; T.push('F@' + ctx.fillStyle + '#' + q(ctx.globalAlpha)); },
+      stroke: () => { N.stroke++; T.push('S@' + ctx.strokeStyle + '#' + q(ctx.lineWidth) + '#' + q(ctx.globalAlpha)); },
+      fillText: (t, x, y) => { C.fillText++; (C.texts ||= []).push([String(t), x, y]); T.push('T' + String(t) + '@' + q(x) + ',' + q(y)); },
+      strokeText: noop, measureText: t => ({ width: (t ? String(t).length : 0) * 8 }),
+      drawImage: (img, x, y, w, h) => { C.drawImage++; N.drawImage++; T.push('D' + q(x) + ',' + q(y) + ',' + q(w) + ',' + q(h) + '#' + (img && img.width ? img.width + 'x' + img.height : '?')); },
       createRadialGradient: () => grad, createLinearGradient: () => grad, createPattern: () => null,
       getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
       putImageData: noop,
     };
+    return ctx;
   }
   function makeCanvas(el) { el.width = 300; el.height = 150; el.getContext = () => (el._ctx ||= makeCtx(el)); return el; }
 
@@ -111,6 +124,10 @@ function makeDom(opts = {}) {
   const copied = [], vibes = [];
   const sb = { __t: 1000 };
   sb.window = sb;
+  /* 确定性 Math.random（LCG）：星场/粒子/AI 抖动都可复现，视觉锁才有意义 */
+  let _rs = 20261025;
+  sb.Math = Object.create(Math);
+  sb.Math.random = () => { _rs = (_rs * 1103515245 + 12345) % 2147483648; return _rs / 2147483648; };
   sb.console = console;
   sb.URLSearchParams = URLSearchParams;
   sb.localStorage = { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k), clear: () => store.clear() };
@@ -589,4 +606,23 @@ test('诊断开关与缓出插值：?q=0.6 固定背店倍率且掉帧也不改�
   const fakeL = { body: [{ x: 2, y: 0 }, { x: 1, y: 0 }], moveT: 1000, moveTGame: 925, moveP: 150, grew: false, tailFrom: null };
   segL(fakeL, 0, 1000, out2);                        // legacy：a=(1000-925)/150=0.5 → 缓存后 0.782 格
   assert.ok(Math.abs(out2.x - 1.782) < .01, `?interp=legacy 应从游戏时钟起算（期望 1.782），实际 ${out2.x.toFixed(3)}`);
+});
+
+/* ---------- 经典模式视觉锁：固定种子 + 确定性随机 + 脚本化游玩 → 绘制轨迹摘要恒定 ---------- */
+test('经典模式视觉锁：90 帧绘制轨迹摘要恒定（Stage 1-5 改地形不得改变经典画面）', () => {
+  const digest = seed => {                      // 同一套驱动，两个种子 → 摘要必须既能锁住、又不退化成常量
+    const H = makeDom({ search: '?seed=' + seed, dpr: 2 });
+    boot(H); H.key('KeyW');                     // 键盘开局
+    autoPlay(H, 90);                            // 脚本化保命 + 确定性吃食（覆盖插值/光晕/粒子/连击/文字）
+    const mix = (h, s) => { for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h; };
+    const cvs = [H.cv, ...H.created.filter(c => typeof c.getContext === 'function' && c !== H.cv)];
+    let h = 2166136261 >>> 0, ops = 0;
+    for (const c of cvs) { const t = c._ctx && c._ctx._t; if (t && t.length) { ops += t.length; h = mix(h, t.join('|')); } }
+    return { h: h >>> 0, ops, n: cvs.length };
+  };
+  const a = digest(20261025), b = digest(7);
+  assert.ok(a.ops > 800 && b.ops > 800, '绘制轨迹太短，锁不住画面（' + a.ops + ' / ' + b.ops + ' 条）');
+  assert.notEqual(a.h, b.h, '不同种子的轨迹摘要必须不同（否则说明摘要退化成常量、锁不住任何东西）');
+  assert.equal(a.h, 0xa224baec, '种子 20261025 的绘制轨迹变了：' + a.h.toString(16) + '（' + a.ops + ' 条 / ' + a.n + ' 张画布）');
+  assert.equal(b.h, 0x1c8c6710, '种子 7 的绘制轨迹变了：' + b.h.toString(16) + '（' + b.ops + ' 条 / ' + b.n + ' 张画布）');
 });
