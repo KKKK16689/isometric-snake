@@ -1704,17 +1704,18 @@ window.Snake = window.Snake || {};
   /* 地形配色按关卡的 biome 走（Stage 4：布局 / biome 皮肤 / 规则三层分离）。
      直接原地覆写 TERR_C 的三个槽位，各处绘制代码不用动。 */
   const BIOMES = {
-    grey: { top: '#8A94A6', left: '#5A6473', right: '#3B4252' },     // 灰模：测试图与既有两张开阔图
-    neon: { top: '#4B5A80', left: '#2C3757', right: '#1B2340' }      // 霓虹都市：偏冷的深蓝楼体
+    grey: { top: '#8A94A6', left: '#5A6473', right: '#3B4252', strip: null },        // 灰模：测试图与既有两张开阔图
+    neon: { top: '#4B5A80', left: '#2C3757', right: '#1B2340', strip: '#5AC8FF' }     // 霓虹都市：偏冷的深蓝楼体 + 青色灯带
   };
   const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（由 syncBiome 按关卡 biome 覆写）
+  let STRIP = null;                                 // 楼面灯带色（biome 提供；灰模为 null ⇒ 不画）
   let biomeFor = null;
   function syncBiome() {                            // 关卡换了才重算（每帧调用只是比一次字符串）
     if (biomeFor === S.levelId) return;
     biomeFor = S.levelId;
     const lv = (Snake.levelById && Snake.levelById(S.levelId)) || null;
     const b = BIOMES[(lv && lv.biome) || 'grey'] || BIOMES.grey;
-    TERR_C[0] = b.top; TERR_C[1] = b.left; TERR_C[2] = b.right;
+    TERR_C[0] = b.top; TERR_C[1] = b.left; TERR_C[2] = b.right; STRIP = b.strip || null;
   }
   const liftOf = (x, y) => S.T ? ((S.T.topWalk(x, y) || { h: 0 }).h) * BLK : 0;   // 该格「最高可走层」的抬升（食物/金苹果落点按此层）
   const liftAt = (x, y, L) => S.T ? (L || 0) * BLK : 0;   // 实体按自己所在层的层高抬升（规格 §3.2：层号参与碰撞与渲染）
@@ -1750,6 +1751,18 @@ window.Snake = window.Snake || {};
     // 被前排同高/更高的地块挡住的侧面直接不画（成排的墙能省掉大半填充；等距下左面被 (x,y+1) 挡、右面被 (x+1,y) 挡）
     if (top > blkTop(o.x, o.y + 1)) poly([[cx - a, cy - top], [cx, cy + b - top], [cx, cy + b - bot], [cx - a, cy - bot]], TERR_C[1]);
     if (top > blkTop(o.x + 1, o.y)) poly([[cx + a, cy - top], [cx, cy + b - top], [cx, cy + b - bot], [cx + a, cy - bot]], TERR_C[2]);
+    if (STRIP) {   // 霓虹都市：楼面竖向灯带（只画朝外且没被前排挡住的侧面）＋高架/桥面顶面两道边缘光条
+      const s0 = .70, s1 = .88, th = 2 / cssK;
+      if (t.kind === 'wall') {
+        if (top > blkTop(o.x, o.y + 1))
+          poly([[cx - a + a * s0, cy - top + b * s0], [cx - a + a * s1, cy - top + b * s1], [cx - a + a * s1, cy - bot + b * s1], [cx - a + a * s0, cy - bot + b * s0]], STRIP);
+        if (top > blkTop(o.x + 1, o.y))
+          poly([[cx + a - a * s0, cy - top + b * s0], [cx + a - a * s1, cy - top + b * s1], [cx + a - a * s1, cy - bot + b * s1], [cx + a - a * s0, cy - bot + b * s0]], STRIP);
+      } else if (t.kind === 'deck') {
+        poly([[cx - a, cy - top], [cx, cy + b - top], [cx, cy + b - top + th], [cx - a, cy - top + th]], STRIP);
+        poly([[cx + a, cy - top], [cx, cy + b - top], [cx, cy + b - top + th], [cx + a, cy - top + th]], STRIP);
+      }
+    }
     diamond(cx, cy - top, a, b, t.kind === 'wall' ? TERR_C[2] : TERR_C[0]);   // 墙顶压暗，和台面区分
     if (al < 1) ctx.globalAlpha = 1;
   }
