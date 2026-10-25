@@ -25,6 +25,31 @@ function load() {
 
 const L = () => load().LEVELS[0];
 
+/* 开阔度守卫（用户要求 B：3D 地图要开阔——通道够宽、没有 1 格死胡同、出生点分居两角）
+   以后改图若把地图改窄/改小，这条先炸，省得又变成「一开局就撞死」。 */
+test('开阔度守卫：可走占比 ≥50%、没有 1 格死胡同、出生点相距 ≥12 格', () => {
+  const S = load();
+  for (const lv of S.LEVELS) {
+    const T = S.Terrain.build(lv);
+    const open = new Set(T.walkables().map(n => n.x + ',' + n.y));
+    const total = lv.map.length * lv.map[0].length;
+    const ratio = open.size / total;
+    assert.ok(ratio >= .5, lv.id + ' 开阔度不足 50%：' + (ratio * 100).toFixed(1) + '%');
+    let wide = 0;
+    for (const k of open) {
+      const [x, y] = k.split(',').map(Number);
+      let c = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (open.has((x + dx) + ',' + (y + dy))) c++;
+      if (c >= 2) wide++;
+    }
+    const dead = 1 - wide / open.size;
+    assert.ok(dead <= .05, lv.id + ' 有 ' + (dead * 100).toFixed(1) + '% 的格子是 1 格死胡同（通道太窄）');
+    const [a, b] = lv.spawns;
+    const sep = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    assert.ok(sep >= 12, lv.id + ' 出生点太近（' + sep + ' 格）——3D 双人会一开局就撞上');
+  }
+});
+
 /* 注册表里的每一张图都必须能过校验、能建图——以后加关卡时这条先炸，防止塞进不可达/不封闭的图 */
 test('关卡注册表：每张图都能过校验并建图，且大小/可达性达标', () => {
   const S = load();
