@@ -39,6 +39,11 @@ window.Snake = window.Snake || {};
     const c = pal(), cols = [c.spark, '#ffffff', K.shades(c.spark)[2]];
     (e.heads || []).forEach(h => { const [cx, cy] = at(h.x, h.y, h.L); scatter(cx, cy, S.lowFx ? 10 : 20, cols, 90, 75); });
   });
+  bus.on('port', e => { // 传送门：落点大爆、起点小爆（两端都要看得见，规格 §3.4）
+    const [x2, y2] = at(e.tx, e.ty, e.tL), [x1, y1] = at(e.x, e.y, e.L);
+    scatter(x2, y2, S.lowFx ? 8 : 18, ['#7FD4FF', '#BFF0FF', '#ffffff'], 55, 70);
+    scatter(x1, y1, S.lowFx ? 3 : 8, ['#7FD4FF', '#ffffff'], 25, 45);
+  });
   bus.on('win', () => { // 对战获胜烟花：3 轮 × 14 粒；lowFx 1 轮
     const c = pal(), cols = [c.spark, K.shades(c.spark)[0], K.shades(c.spark)[2], c.food, K.shades(c.food)[0]];
     const rounds = S.lowFx ? 1 : 3;
