@@ -101,6 +101,19 @@ test('SW 在线：缓存命中立回旧副本，后台刷新写入新副本（st
   assert.equal(fresh.body, 'NET:' + ORIGIN + '/index.html');  // 后台已刷新
 });
 
+test('SW 导航网络优先：在线刷新一定拿到最新构建（防「刷新后还是上一版」的误判）', async () => {
+  const H = loadSW();
+  H.install();
+  await Promise.all(H.waits.splice(0));
+  const url = ORIGIN + '/?mode=expedition';
+  const nav = await H.fetchEv(url, 'navigate');
+  assert.ok(nav, '导航请求应被接管');
+  assert.equal((await nav).body, 'NET:' + url);          // 网络优先：不返回缓存的旧壳
+  await flush();
+  const cacheName = [...H.store.keys()].find(k => k.startsWith('iso-snake-v'));
+  assert.equal(H.store.get(cacheName).get(url).body, 'NET:' + url);   // 顺手写回缓存，断网仍可玩
+});
+
 test('SW 断网：导航回退缓存壳，资源回 undefined，跨域与 POST 不接管', async () => {
   const H = loadSW();
   H.install();
