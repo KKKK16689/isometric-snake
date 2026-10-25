@@ -300,13 +300,14 @@ window.Snake = window.Snake || {};
     loadBest(); newGame(); bus.emit('hud');
   }
   function setGhostOn(v) { S.ghostOn = !!v; safeSet('iso-snake-ghost-on', S.ghostOn ? '1' : '0'); }
-  /* render 每帧调用：追赶式 tick（帧率无关），一帧最多补 3 步 */
+  /* render 每帧调用：追赶式 tick（帧率无关）。掉帧后最多补 1 步，其余积压直接丢弃——
+     补跑多步会让蛇在一帧里连跳好几格（用户明确要求「不卡、没有瞬移」），宁可让节奏短暂放慢。 */
   function update(t) {
     S.now = t;   // 渲染时钟：插值起点改用实测帧时间（S.last 是游戏时钟，可能落后最多一个 tick ⇒ 每格起点最多偏半格，看着一顿一顿）
     if (S.state === 'playing') {
       let n = 0;
-      while (S.state === 'playing' && t - S.last >= tickMs() && n++ < 3) { S.last += tickMs(); step(S.last); }
-      if (t - S.last > 400) S.last = t;
+      while (S.state === 'playing' && t - S.last >= tickMs() && n++ < 1) { S.last += tickMs(); step(S.last); }
+      if (t - S.last > tickMs()) S.last = t;   // 还有积压（大卡顿 / 切后台回来）：对齐当前时刻，不补跑
     }
   }
 
