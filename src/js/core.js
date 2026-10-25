@@ -32,15 +32,14 @@ window.Snake = window.Snake || {};
     FOOD_PK: ['#FFFFFF', '#CBD5E1', '#94A3B8'],
     /* 格坐标方向（等距屏上视角） */
     DIRS: { upRight: [0, -1], downRight: [1, 0], downLeft: [0, 1], upLeft: [-1, 0] },
-    /* 屏幕方向 → 两个候选格方向；steer() 挑能转弯的那个。
-       顺序即优先级：c1 优先，除非 c1 正好是当前方向的反向（那时选 c2，避免硬掉头）。
-       表必须按「屏幕观感」配：↑ 给朝上的两个（右上/左上）、↓ 给朝下的两个、← 给朝左的两个、→ 给朝右的两个。
-       （旧表把 ↑ 配成「右上/右下」——等于所有按键整体偏了 45°：往下走时按 ↑ 会被忽略、按 ↓ 反而左转。） */
+    /* 方向键 → 格方向：**一键一方向**（4 个键各自控制一个方向，按下必转，不再「一键两个候选」）。
+       等距屏上顺时针一圈：↑ = 右上、→ = 右下、↓ = 左下、← = 左上。
+       turn() 会拒绝「与当前/排队方向相同」与「反向掉头」，所以按到自己正在走的方向＝不动、按反向＝不动。 */
     SCREEN: {
-      up:    [[0, -1], [-1, 0]],   // 右上 / 左上
-      down:  [[1, 0], [0, 1]],     // 右下 / 左下
-      left:  [[-1, 0], [0, 1]],    // 左上 / 左下
-      right: [[0, -1], [1, 0]]     // 右上 / 右下
+      up:    [0, -1],   // 右上
+      right: [1, 0],    // 右下
+      down:  [0, 1],    // 左下
+      left:  [-1, 0]    // 左上
     },
     /* 集中调参表：散在各模块的魔法数收拢于此（平衡性迭代 / 文档 / 测试共用） */
     TUNE: {
@@ -273,12 +272,9 @@ window.Snake = window.Snake || {};
     if (d[0] + ref[0] === 0 && d[1] + ref[1] === 0) return;
     if (p.queue.length < 2) p.queue.push(d);
   }
-  function steer(p, name) {
-    const ref = p.queue.length ? p.queue[p.queue.length - 1] : p.dir;
-    const [c1, c2] = K.SCREEN[name];
-    const same = c => c[0] === ref[0] && c[1] === ref[1];
-    if (same(c1) || same(c2)) return;
-    turn(p, same([-c1[0], -c1[1]]) ? c2 : c1);
+  function steer(p, name) {           // 一键一方向：直接交给 turn()（它负责忽略「同向」与「反向」）
+    const d = K.SCREEN[name];
+    if (d) turn(p, d);
   }
   function step(now) {   // now = 游戏时钟（S.last），与 rAF 的 t 同基准，供插值/连击
     S.tickN++;

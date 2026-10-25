@@ -307,7 +307,7 @@ test('集成：触屏（pad/滑动/点按）+ 冲刺键 + resize + 切后台暂�
   H.sb.Snake.api.press = (i, name) => { pressed = name; return realPress(i, name); };
   H.fireEl(H.cv, 'pointerdown', { clientX: 100, clientY: 100, pointerType: 'touch' });
   H.fireEl(H.cv, 'pointermove', { clientX: 140, clientY: 100, pointerType: 'touch', buttons: 0 });
-  assert.equal(pressed, 'right', '越过阈值应立即转向（不必等抬手）');
+  assert.equal(pressed, 'up', '越过阈值应立即转向（不必等抬手）；滑动按屏幕象限定方向：向右＝右上');
   pressed = null;
   H.fireEl(H.cv, 'pointermove', { clientX: 200, clientY: 100, pointerType: 'touch', buttons: 0 });
   assert.equal(pressed, null, '同一次手势只触发一次转向');
