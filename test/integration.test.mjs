@@ -672,3 +672,20 @@ test('手感契约：移动首帧画旧格不瞬移；半程已走过大部分�
   L.sb.Snake.Render.segPos(p2, 0, 1000, out2);
   assert.ok(out2.x > .3 && out2.x < .7, '?interp=legacy 起步就该抢跑 0.3~0.7 格（2.0 的瞬移手感）：x=' + out2.x.toFixed(3));
 });
+
+/* ---------- 掉帧不补跑：一次大卡顿最多前进一格，不许一帧连跳好几格 ---------- */
+test('掉帧不补跑：600ms 大帧最多前进一格，恢复后也不追赶式连跳', () => {
+  const H = makeDom({ search: '?seed=20261025', dpr: 2 });
+  boot(H); H.api.setMode('normal'); H.api.start(); H.drive(10);
+  const p = H.S.pl[0];
+  const head = () => p.body[0];
+  const steps = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+  const a0 = { x: head().x, y: head().y };
+  H.drive(1, 600);                                   // 卡顿后回来的那一帧（600ms 积压 ≈ 4 个 tick）
+  const a1 = { x: head().x, y: head().y };
+  assert.ok(steps(a0, a1) <= 1, '大帧只该前进一格（补跑会一帧连跳好几格）：走了 ' + steps(a0, a1) + ' 格');
+  H.drive(4);                                        // 恢复后的几帧
+  const a2 = { x: head().x, y: head().y };
+  assert.ok(steps(a1, a2) <= 2, '恢复后不该追赶式连跳：又走了 ' + steps(a1, a2) + ' 格');
+  assert.equal(H.S.state, 'playing');
+});
