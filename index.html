@@ -183,7 +183,9 @@ window.Snake = window.Snake || {};
       easy:   { n: 12, start: 220, min: 120, accel: 3, lives: 3, players: 1, foods: 1 },
       normal: { n: 12, start: 150, min: 70,  accel: 4, lives: 1, players: 1, foods: 1 },
       pk:     { n: 18, start: 160, min: 100, accel: 2, lives: 1, players: 2, foods: 3 },
-      ai:     { n: 18, start: 160, min: 100, accel: 2, lives: 1, players: 2, foods: 3, ai: true }
+      ai:     { n: 18, start: 160, min: 100, accel: 2, lives: 1, players: 2, foods: 3, ai: true },
+      /* 3.0 远征：地图尺寸与出生点来自关卡数据（levels.js），视口格数另算（桌面 18 / 窄屏 14） */
+      expedition: { n: 24, start: 170, min: 90, accel: 3, lives: 1, players: 1, foods: 1 }
     },
     /* 皮肤：玩家身份标识，不随主题变化 */
     SK: [
@@ -222,6 +224,8 @@ window.Snake = window.Snake || {};
   /* ---------- 状态（唯一真相，其他模块只读；写入仅经 api） ---------- */
   const S = {
     N: 12, W: 380, H: 240, OX: 190,
+    MAP_N: 12, VIEW_N: 12,              // 3.0：地图边长与视口格数分离（经典模式两者相等，行为不变）
+    T: null, levelId: '', levelName: '', camCX: 0, camCY: 0,   // 远征：层图 / 关卡 / 相机中心（渲染层只读）
     lowFx: false, frameDt: .016,        // lowFx 由 render 检测并写入
     mode: 'easy', pl: [], foods: [], state: 'ready', msg: '', last: 0,
     best: 0, wins: [0, 0], winner: -1, tickN: 0, overAt: 0, skin: [0, 1], fxGood: 0,
@@ -268,12 +272,33 @@ window.Snake = window.Snake || {};
   };
 
   /* ---------- 游戏逻辑 ---------- */
-  function setSize(n) {
-    S.N = n; S.W = n * K.TW + 20; S.H = n * K.TH + K.OY + 12; S.OX = S.W / 2;
-    bus.emit('resize', { n });           // render 监听并同步 canvas 尺寸
+  /* 地图边长与视口格数分开：经典模式两者相等（三道视觉/行为锁依赖），远征模式视口按屏幕取 18/14 */
+  function setSize(mapN, viewN) {
+    S.N = S.MAP_N = mapN; S.VIEW_N = viewN;
+    S.W = viewN * K.TW + 20; S.H = viewN * K.TH + K.OY + 12; S.OX = S.W / 2;
+    bus.emit('resize', { n: viewN });    // render 监听并同步 canvas 尺寸
   }
-  const bestKey = () => 'iso-snake-best2-' + S.mode;   // 连击计分为新榜（旧 best 键保留不迁移，两榜独立）
-  const ghostKey = () => 'iso-snake-ghost-' + S.mode;  // 幽灵存档按模式分开（棋盘尺寸不同）
+  const viewN = () => (typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches) ? 14 : 18;
+  /* 关卡：Stage 1 只有灰模测试图；层图（地形）由 terrain.js 建好后挂在 S.T 上 */
+  function loadLevel(id) {
+    const lv = Snake.levelById(id) || Snake.LEVELS[0];
+    S.T = Snake.Terrain.build(lv); S.levelId = lv.id; S.levelName = lv.name;
+  }
+  /* 是否阻挡：有层图按层图（Stage 1 只看最高可走层 ⇒ 墙/水挡、高台与桥面可走），否则按棋盘边界 */
+  const solid = (x, y) => S.T ? !S.T.hasWalk(x, y) : (x < 0 || y < 0 || x >= S.N || y >= S.N);
+  /* 相机：跟随 p0 头部，死区 2 格，clamp 在地图内；经典模式固定在地图中心（渲染偏移恒为 0） */
+  function camFollow() {
+    if (!S.T) { S.camCX = (S.N - 1) / 2; S.camCY = (S.N - 1) / 2; return; }
+    const h = S.pl[0] && S.pl[0].body[0]; if (!h) return;
+    const half = (S.VIEW_N - 1) / 2, dz = 2;
+    if (Math.abs(h.x - S.camCX) > dz) S.camCX = h.x - Math.sign(h.x - S.camCX) * dz;
+    if (Math.abs(h.y - S.camCY) > dz) S.camCY = h.y - Math.sign(h.y - S.camCY) * dz;
+    S.camCX = Math.max(half, Math.min(S.N - 1 - half, S.camCX));
+    S.camCY = Math.max(half, Math.min(S.N - 1 - half, S.camCY));
+  }
+  /* 经典模式沿用 2.0 的榜/存档键（不动老数据）；远征按规格 §3.7 用 iso-snake-3: 前缀并绑定关卡 id */
+  const bestKey = () => S.mode === 'expedition' ? 'iso-snake-3:best-expedition-' + S.levelId : 'iso-snake-best2-' + S.mode;
+  const ghostKey = () => S.mode === 'expedition' ? 'iso-snake-3:ghost-expedition-' + S.levelId : 'iso-snake-ghost-' + S.mode;
   function loadBest() { S.best = +safeGet(bestKey(), 0) || 0; }
   /* 本地统计（累计局数/食物/金苹果），持久化于 iso-snake-stats */
   function loadStats() { try { const o = JSON.parse(safeGet('iso-snake-stats', '{}')); S.stats = { games: +o.games || 0, food: +o.food || 0, gold: +o.gold || 0 }; } catch (e) {} }
@@ -288,7 +313,7 @@ window.Snake = window.Snake || {};
   }
   function saveGhost(p) { if (S.rec.length >= 4) safeSet(ghostKey(), JSON.stringify({ score: p.score, ts: Date.now(), path: S.rec })); }
   /* 结算分享文案（复制成绩按钮用） */
-  const MODE_NAME = { easy: '简单', normal: '普通', pk: '双人对战', ai: '人机对战' };
+  const MODE_NAME = { easy: '简单', normal: '普通', pk: '双人对战', ai: '人机对战', expedition: '远征' };
   const URL_HOME = 'https://kkkk16689.github.io/isometric-snake/';
   function buildResultText() {
     if (K.MODES[S.mode].players === 1) {
@@ -301,8 +326,16 @@ window.Snake = window.Snake || {};
   }
   function spawn(i, p) {
     const two = K.MODES[S.mode].players === 2;
-    const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
-    p.body = xs.map(x => ({ x, y })); p.dir = i ? K.DIRS.upLeft : K.DIRS.downRight; p.queue = []; p.dead = false;
+    let dir;
+    if (S.T) {   // 远征：出生点与朝向来自关卡数据，蛇身沿反方向铺 3 格（关卡校验保证前方有 3 格跑道）
+      const s = S.T.spawns[Math.min(i, S.T.spawns.length - 1)];
+      dir = K.DIRS[s.dir] || K.DIRS.downRight;
+      p.body = [0, 1, 2].map(k => ({ x: s.x - dir[0] * k, y: s.y - dir[1] * k }));
+    } else {     // 经典：出生点与朝向保持 2.0 原样（行为锁/视觉锁依赖它）
+      const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
+      p.body = xs.map(x => ({ x, y })); dir = i ? K.DIRS.upLeft : K.DIRS.downRight;
+    }
+    p.dir = dir; p.queue = []; p.dead = false;
     p.moveT = 0; p.moveTGame = 0; p.moveP = 300; p.grew = false; p.tailFrom = null; p.streakAt = 0;  // 插值/连击时钟复位
   }
   function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
@@ -313,7 +346,7 @@ window.Snake = window.Snake || {};
     S.foods.forEach(f => taken.add(f.x * 1024 + f.y));
     if (S.gold) taken.add(S.gold.x * 1024 + S.gold.y);   // 金苹果占位：补充食物不得与其重叠
     const free = [];
-    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) if (!taken.has(x * 1024 + y)) free.push({ x, y });
+    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) { if (S.T && !S.T.hasWalk(x, y)) continue; if (!taken.has(x * 1024 + y)) free.push({ x, y }); }   // 远征：食物只落在可走格
     while (S.foods.length < want) {
       if (!free.length) { boardFull(); return; }
       const k = rand(free.length);
@@ -325,7 +358,7 @@ window.Snake = window.Snake || {};
     S.pl.forEach(p => p.body.forEach(s => taken.add(s.x * 1024 + s.y)));
     S.foods.forEach(f => taken.add(f.x * 1024 + f.y));
     const free = [];
-    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) if (!taken.has(x * 1024 + y)) free.push({ x, y });
+    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) { if (S.T && !S.T.hasWalk(x, y)) continue; if (!taken.has(x * 1024 + y)) free.push({ x, y }); }
     if (!free.length) return;
     const c = free[rand(free.length)];
     S.gold = { x: c.x, y: c.y, born: now };
@@ -346,7 +379,9 @@ window.Snake = window.Snake || {};
     bus.emit('hud');
   }
   function newGame() {
-    const m = K.MODES[S.mode]; setSize(m.n);
+    const m = K.MODES[S.mode];
+    if (S.mode === 'expedition') { if (!S.T) loadLevel(S.levelId || 'test-24'); setSize(S.T.w, viewN()); }
+    else { S.T = null; setSize(m.n, m.n); }   // 经典模式：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
     if (S.daily && S.seed) setSeed(S.seed);   // 每日挑战重开：随机流复位到同一种子（同种子同局）
     S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
     S.pl = [...Array(m.players)].map((_, i) => {
@@ -357,6 +392,7 @@ window.Snake = window.Snake || {};
     S.gold = null; S.rec = []; S.myMoves = 0;   // 内容态复位须在 fillFoods 前：金苹果占位参与空格取样，否则重开随机流与全新实例错位
     S.foods = []; fillFoods(); S.state = 'ready'; S.msg = ''; S.winner = -1;
     loadGhost();   // 幽灵存档随新一局重载
+    camFollow();   // 相机起点（经典＝地图中心 ⇒ 渲染偏移恒 0）
     bus.emit('hud'); bus.emit('gameStart');
   }
   function turn(p, d) {
@@ -392,7 +428,7 @@ window.Snake = window.Snake || {};
     const eat = hs.map(h => h ? S.foods.findIndex(f => f.x === h.x && f.y === h.y) : -1);
     const hit = hs.map((h, i) => {
       if (!h) return false;
-      if (h.x < 0 || h.y < 0 || h.x >= S.N || h.y >= S.N) return true;
+      if (solid(h.x, h.y)) return true;   // 经典＝棋盘边界；远征＝层图上的墙/水（Stage 1 只做硬阻挡，高差/桥/传送见 Stage 2）
       if (hs.some((o, j) => j !== i && o && o.x === h.x && o.y === h.y)) return true; // 对头相撞
       return S.pl.some((q, j) => (mv[j] && eat[j] < 0 ? q.body.slice(0, -1) : q.body).some(s => s.x === h.x && s.y === h.y));
     });
@@ -462,7 +498,11 @@ window.Snake = window.Snake || {};
   function togglePause() { if (S.state === 'playing') { S.state = 'paused'; S.msg = ''; } else start(); }
   function press(i, name) { if (S.state !== 'playing') { start(); if (S.state !== 'playing') return; } if (S.pl[i]) steer(S.pl[i], name); }
   const setHold = (i, v) => { if (S.pl[i]) S.pl[i].hold = v; };
-  function setMode(m) { S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0); loadBest(); newGame(); bus.emit('hud'); }
+  function setMode(m) {
+    S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0);
+    if (m === 'expedition') loadLevel(S.levelId || 'test-24');   // 进远征先建层图
+    loadBest(); newGame(); bus.emit('hud');
+  }
   function setSkin(p, k) { S.skin[p] = k; bus.emit('hud'); }
   /* 每日挑战：固定普通模式 + 当日/自定义种子，食物序列可复现 */
   function startDaily(seed) {
@@ -480,6 +520,7 @@ window.Snake = window.Snake || {};
       while (S.state === 'playing' && t - S.last >= tickMs() && n++ < 1) { S.last += tickMs(); step(S.last); }
       if (t - S.last > tickMs()) S.last = t;   // 还有积压（大卡顿 / 切后台回来）：对齐当前时刻，不补跑
     }
+    camFollow();   // 相机跟随（纯数学、无 DOM；渲染层逐帧只读 S.camCX/camCY）
   }
 
   const qs = new URLSearchParams(location.search);   // 便于截图/直链分享（?theme= ?mode= ?daily=1 ?seed=N），mode 仅初始值
@@ -488,6 +529,8 @@ window.Snake = window.Snake || {};
     S.mode = 'normal'; S.daily = true;
     setSeed((+qs.get('seed') | 0) || dateSeed());
   }
+  if (qs.get('level')) S.levelId = qs.get('level');
+  if (S.mode === 'expedition') loadLevel(S.levelId || 'test-24');   // ?mode=expedition&level=test-24 直达
   loadStats();
   S.ghostOn = safeGet('iso-snake-ghost-on', '0') === '1';
 
@@ -504,7 +547,12 @@ window.Snake = window.Snake || {};
 
   Snake.K = K; Snake.S = S; Snake.bus = bus;
   Snake.hooks = { think: null };
-  Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, update };
+  /* 远征入口：Stage 1 先用 URL / api 直达（工具栏不加控件，见 Stage 1 简报 Q3） */
+  function startExpedition(id) {
+    S.mode = 'expedition'; S.wins = [0, 0]; S.daily = false; setSeed(0);
+    loadLevel(id || S.levelId || 'test-24'); loadBest(); newGame(); bus.emit('hud');
+  }
+  Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, update };
 })();
 </script>
 <script>
@@ -523,12 +571,12 @@ window.Snake = window.Snake || {};
     '#..111111............p.#',
     '#..122221..............#',
     '#..122221..............#',
-    '#..122221............$.#',
+    '#..122221...........$..#',
     '#..111111..............#',
     '#................~~~...#',
     '#................~~~...#',
     '#................~~~...#',
-    '#.@..............~~~...#',
+    '#...@............~~~...#',
     '#...............1BBB1..#',
     '#...............1BBB1..#',
     '#................~~~...#',
@@ -550,7 +598,7 @@ window.Snake = window.Snake || {};
       biome: 'grey',
       map: TEST24,
       foods: 1,                      // 单人远征：同屏 1 个普通食物
-      spawns: [{ x: 2, y: 11, dir: 'downRight' }, { x: 21, y: 6, dir: 'upLeft' }],
+      spawns: [{ x: 4, y: 11, dir: 'downRight' }, { x: 20, y: 6, dir: 'upLeft' }],
       rulesetVersion: 1
     }
   ];
@@ -597,6 +645,8 @@ window.Snake = window.Snake || {};
     }
   }
   const isWalk = l => !!l && l.walkable;
+  /* 出生朝向 → 格方向向量（与 core 的 K.DIRS 同义；terrain 自带一份，便于脱离 core 单测） */
+  const DIRV = { upRight: [0, -1], downRight: [1, 0], downLeft: [0, 1], upLeft: [-1, 0] };
 
   /* 内部：只建层图、不做校验（validate 也要用它 ⇒ 不能写成 build→validate→build 的互相递归） */
   function makeGraph(rows, level) {
@@ -686,7 +736,18 @@ window.Snake = window.Snake || {};
   }
 
   /* 对外建图：先校验（不合法直接抛错），再建层图 */
-  function build(level) { validate(level.map); return makeGraph(level.map, level); }
+  function build(level) {
+    validate(level.map);
+    /* 出生点身后的 2 格要留给初始蛇身（validate 只看地图，不知道朝向，这里按关卡数据补一道守卫） */
+    (level.spawns || []).forEach((s, i) => {
+      const d = DIRV[s.dir] || DIRV.downRight;
+      for (let k = 1; k <= 2; k++) {
+        const x = s.x - d[0] * k, y = s.y - d[1] * k;
+        if (!layersOf(level.map[y][x], x, y).some(isWalk)) throw new Error(`terrain.build: 出生点 ${i} (${s.x},${s.y}) 身后第 ${k} 格 (${x},${y}) 不可走——初始蛇身会嵌进墙里`);
+      }
+    });
+    return makeGraph(level.map, level);
+  }
 
   /* ---------- 校验：任何一条不满足就抛错，绝不静默补齐 ---------- */
   function validate(rows) {

@@ -32,6 +32,8 @@ window.Snake = window.Snake || {};
     }
   }
   const isWalk = l => !!l && l.walkable;
+  /* 出生朝向 → 格方向向量（与 core 的 K.DIRS 同义；terrain 自带一份，便于脱离 core 单测） */
+  const DIRV = { upRight: [0, -1], downRight: [1, 0], downLeft: [0, 1], upLeft: [-1, 0] };
 
   /* 内部：只建层图、不做校验（validate 也要用它 ⇒ 不能写成 build→validate→build 的互相递归） */
   function makeGraph(rows, level) {
@@ -121,7 +123,18 @@ window.Snake = window.Snake || {};
   }
 
   /* 对外建图：先校验（不合法直接抛错），再建层图 */
-  function build(level) { validate(level.map); return makeGraph(level.map, level); }
+  function build(level) {
+    validate(level.map);
+    /* 出生点身后的 2 格要留给初始蛇身（validate 只看地图，不知道朝向，这里按关卡数据补一道守卫） */
+    (level.spawns || []).forEach((s, i) => {
+      const d = DIRV[s.dir] || DIRV.downRight;
+      for (let k = 1; k <= 2; k++) {
+        const x = s.x - d[0] * k, y = s.y - d[1] * k;
+        if (!layersOf(level.map[y][x], x, y).some(isWalk)) throw new Error(`terrain.build: 出生点 ${i} (${s.x},${s.y}) 身后第 ${k} 格 (${x},${y}) 不可走——初始蛇身会嵌进墙里`);
+      }
+    });
+    return makeGraph(level.map, level);
+  }
 
   /* ---------- 校验：任何一条不满足就抛错，绝不静默补齐 ---------- */
   function validate(rows) {
