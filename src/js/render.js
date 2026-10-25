@@ -359,9 +359,12 @@ window.Snake = window.Snake || {};
         + ' · 漏帧 ' + dropPct + '%' + (S.lowFx ? ' · lowFx' : '') + ' · ' + cv.width + '×' + cv.height
         + (cssW ? ' (×' + (cv.width / cssW).toFixed(2) + ')' : '');   // 括号里是等效倍率：<1 表示已软渲染换流畅
       const k = 1 / cssK, fs = 11 * k, pad = 6 * k;
+      // 位置：默认画布左下角（单人沉浸/列式布局那里是空的；左上被罗盘占、右上被能量条占）；PK 沉浸下左下是方向垫，抬到垫子之上
+      const yBase = (typeof document !== 'undefined' && document.body.classList.contains('pk') ? 118 : 8) * k;
+      const ty = S.H - yBase, bw = txt.length * fs * .62 + pad * 2;
       ctx.font = '600 ' + fs.toFixed(1) + 'px ui-monospace,monospace'; ctx.textAlign = 'left';
-      ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(pad, pad, txt.length * fs * .62 + pad * 2, fs + pad * 1.8);
-      ctx.fillStyle = '#7DD3FC'; ctx.fillText(txt, pad * 2, pad * 2 + fs * .82);
+      ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(pad, ty - fs - pad * .8, bw, fs + pad * 1.8);
+      ctx.fillStyle = '#7DD3FC'; ctx.fillText(txt, pad * 2, ty);
     }
   }
   function frame(t) {

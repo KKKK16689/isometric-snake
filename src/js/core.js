@@ -30,10 +30,15 @@ window.Snake = window.Snake || {};
     FOOD_PK: ['#FFFFFF', '#CBD5E1', '#94A3B8'],
     /* 格坐标方向（等距屏上视角） */
     DIRS: { upRight: [0, -1], downRight: [1, 0], downLeft: [0, 1], upLeft: [-1, 0] },
-    /* 屏幕方向 → 两个候选格方向；steer() 挑能转弯的那个 */
+    /* 屏幕方向 → 两个候选格方向；steer() 挑能转弯的那个。
+       顺序即优先级：c1 优先，除非 c1 正好是当前方向的反向（那时选 c2，避免硬掉头）。
+       表必须按「屏幕观感」配：↑ 给朝上的两个（右上/左上）、↓ 给朝下的两个、← 给朝左的两个、→ 给朝右的两个。
+       （旧表把 ↑ 配成「右上/右下」——等于所有按键整体偏了 45°：往下走时按 ↑ 会被忽略、按 ↓ 反而左转。） */
     SCREEN: {
-      up:    [[0, -1], [1, 0]], down: [[0, 1], [-1, 0]],
-      left:  [[-1, 0], [0, -1]], right: [[1, 0], [0, 1]]
+      up:    [[0, -1], [-1, 0]],   // 右上 / 左上
+      down:  [[1, 0], [0, 1]],     // 右下 / 左下
+      left:  [[-1, 0], [0, 1]],    // 左上 / 左下
+      right: [[0, -1], [1, 0]]     // 右上 / 右下
     },
     /* 集中调参表：散在各模块的魔法数收拢于此（平衡性迭代 / 文档 / 测试共用） */
     TUNE: {
@@ -241,7 +246,7 @@ window.Snake = window.Snake || {};
         bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, pts: gain, i });
       }
       else p.tailFrom = p.body.pop();
-      p.grew = eat[i] >= 0; p.moveT = now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick
+      p.grew = eat[i] >= 0; p.moveT = S.now > 0 ? S.now : now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick；moveT 用渲染时钟给插值用
       if (i === 0) { S.rec.push(hs[i].x, hs[i].y); S.myMoves++; }   // 幽灵录制：p0 每步头格
     });
     if (S.gold) {   // 金苹果拾取：+3 分 +30 能量，不增长、不影响连击（两蛇同 tick 踩上则先手判给 p0）
@@ -297,6 +302,7 @@ window.Snake = window.Snake || {};
   function setGhostOn(v) { S.ghostOn = !!v; safeSet('iso-snake-ghost-on', S.ghostOn ? '1' : '0'); }
   /* render 每帧调用：追赶式 tick（帧率无关），一帧最多补 3 步 */
   function update(t) {
+    S.now = t;   // 渲染时钟：插值起点改用实测帧时间（S.last 是游戏时钟，可能落后最多一个 tick ⇒ 每格起点最多偏半格，看着一顿一顿）
     if (S.state === 'playing') {
       let n = 0;
       while (S.state === 'playing' && t - S.last >= tickMs() && n++ < 3) { S.last += tickMs(); step(S.last); }
