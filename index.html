@@ -1469,7 +1469,7 @@ window.Snake = window.Snake || {};
      几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
   const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: .75 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
-  const BUILD = 'stage3.5';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
+  const BUILD = 'stage4.1';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
   const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
     const m = /(^|[?&])q=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
@@ -1701,7 +1701,21 @@ window.Snake = window.Snake || {};
   }
   /* ---------- 地形块（Stage 1 灰模：墙 / 高台 / 桥面，参与同一套深度排序） ---------- */
   const BLK = 9;                                    // 每层高度（px）
-  const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（灰模，与皮肤无关）
+  /* 地形配色按关卡的 biome 走（Stage 4：布局 / biome 皮肤 / 规则三层分离）。
+     直接原地覆写 TERR_C 的三个槽位，各处绘制代码不用动。 */
+  const BIOMES = {
+    grey: { top: '#8A94A6', left: '#5A6473', right: '#3B4252' },     // 灰模：测试图与既有两张开阔图
+    neon: { top: '#4B5A80', left: '#2C3757', right: '#1B2340' }      // 霓虹都市：偏冷的深蓝楼体
+  };
+  const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（由 syncBiome 按关卡 biome 覆写）
+  let biomeFor = null;
+  function syncBiome() {                            // 关卡换了才重算（每帧调用只是比一次字符串）
+    if (biomeFor === S.levelId) return;
+    biomeFor = S.levelId;
+    const lv = (Snake.levelById && Snake.levelById(S.levelId)) || null;
+    const b = BIOMES[(lv && lv.biome) || 'grey'] || BIOMES.grey;
+    TERR_C[0] = b.top; TERR_C[1] = b.left; TERR_C[2] = b.right;
+  }
   const liftOf = (x, y) => S.T ? ((S.T.topWalk(x, y) || { h: 0 }).h) * BLK : 0;   // 该格「最高可走层」的抬升（食物/金苹果落点按此层）
   const liftAt = (x, y, L) => S.T ? (L || 0) * BLK : 0;   // 实体按自己所在层的层高抬升（规格 §3.2：层号参与碰撞与渲染）
   let PORTALS = [], portalsFor = null;                    // 传送门位置缓存（关卡换了才重算——门很少，重算可忽略）
@@ -1888,6 +1902,7 @@ window.Snake = window.Snake || {};
     mmCtx.stroke();
   }
   function draw(t) {
+    syncBiome();                                         // 关卡换了先把地块配色换掉，再（可能）重建静态层
     if (qDirty) { qDirty = false; applyCanvasSize(); }   // 自适应画质换档：在帧首重建，避免半帧换尺寸
     camUpdate();                                         // 相机：远征跟随蛇头（经典模式恒 0）
     mmUpdate(t);                                         // 远征小地图（内部 4~8Hz 节流；经典模式直接返回）
