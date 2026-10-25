@@ -19,7 +19,7 @@ window.Snake = window.Snake || {};
      只有在 dpr=1 的屏幕上、且漏帧率超过 35% 时，才允许再降到 0.75 倍 CSS（略软换流畅，回升即复原）。
      几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
-  const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 15000, softMin: .75 };
+  const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: .75 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
   const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
     const m = /(^|[?&])q=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
@@ -156,13 +156,18 @@ window.Snake = window.Snake || {};
      moveP 才到位，观感上比 2.0 慢半拍（用户反馈「按键后响应偏慢」）；2.0 用的是游戏时钟，起步就
      跳掉最多半格（快但有瞬移）。?interp=legacy 可切回 2.0 时钟做 A/B。 */
   const LEGACY_INTERP = /(^|[?&])interp=legacy(&|$)/.test((typeof location !== 'undefined' && location.search) || '');
+  const SPAN = (() => {   // ?span=0.5~1：视觉到位只用「一格时间」的这个比例，剩下的时间停在新格上（越小手感越冲）
+    const m = /(^|[?&])span=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
+    const v = m ? parseFloat(m[2]) : 1;
+    return v >= .5 && v <= 1 ? v : 1;
+  })();
   const EASE_POW = 2.2;                                  // 缓出指数（1 = 线性；越大越早到位）
   const ease = a => a <= 0 ? 0 : a >= 1 ? 1 : 1 - Math.pow(1 - a, EASE_POW);
   const PTS = [[], []];                                   // 每玩家浮点格坐标缓存（逐帧复用，零分配）
   const items = [];                                       // 画家算法排序表（对象池复用，逐帧零分配）
   function segPos(p, j, t, out) {
     const cur = p.body[j], t0 = LEGACY_INTERP ? (p.moveTGame || p.moveT) : p.moveT;
-    const a = p.moveP ? (t - t0) / p.moveP : 1;
+    const a = p.moveP ? (t - t0) / (p.moveP * SPAN) : 1;
     if (a > 0 && a < 1) { // 中段身体来自 body[j+1]；尾段：生长帧原地，否则来自让出的旧尾格
       const from = j < p.body.length - 1 ? p.body[j + 1] : (p.grew ? cur : (p.tailFrom || cur));
       const e = ease(a);
