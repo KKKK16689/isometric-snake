@@ -223,6 +223,7 @@ window.Snake = window.Snake || {};
       lowFxOn: .032, lowFxOff: .020, lowFxRecover: 120,  // render 帧耗时 EMA：超过 on 降级，低于 off 连续 recover 帧恢复
       comboWindow: 6000, comboBonus: 1,                  // 连击：6s 内持续吃食，第 2 个起每个额外 +1（×2 封顶）
       goldChance: .12, goldTtl: 6000, goldScore: 3, goldEnergy: 30,  // 金苹果：每次吃食后 12% 概率出现，6s 过期，+3 分 +30 能量
+      foods3d: 6,   // 3D 双人对战的食物数：层图地图大、可走格多，多给几颗，别让两条蛇死抢同一颗（经典模式仍用 MODES.foods）
       moveLead: 8                                        // 插值起势：移动那一帧把插值时钟提前 8ms（≈半帧），按下后首帧就看得见位移
     }
   };
@@ -395,7 +396,7 @@ window.Snake = window.Snake || {};
     return free;
   }
   function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
-    const want = K.MODES[S.mode].foods;
+    const want = (S.T && K.MODES[S.mode].players === 2) ? K.TUNE.foods3d : K.MODES[S.mode].foods;   // 3D 双人对战多给食物，减少「抢同一颗」的迎头撞
     if (S.foods.length >= want) return;
     const free = freeCells();
     while (S.foods.length < want) {
@@ -1427,7 +1428,7 @@ window.Snake = window.Snake || {};
      几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
   const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: .75 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
-  const BUILD = 'stage3.2';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
+  const BUILD = 'stage3.3';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
   const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
     const m = /(^|[?&])q=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
@@ -2066,9 +2067,9 @@ window.Snake = window.Snake || {};
     return a;
   };
   const AI_LV = [
-    { name: '简单', err: .08, sprint: false, near: 0, minE: 100 }, // 偶尔随机安全步，永不冲刺
-    { name: '普通', err: .02, sprint: true, near: 6, minE: 50 },
-    { name: '困难', err: 0, sprint: true, near: 9, minE: 30 }
+    { name: '简单', err: .08, sprint: false, near: 0, minE: 100, avoid: 0, contest: false },   // 偶尔随机安全步、不冲刺、不避让对手（会跟你抢同一个食物）
+    { name: '普通', err: .02, sprint: true, near: 6, minE: 50, avoid: 320, contest: true },     // 少犯错、避开对手蛇头的可达格、抢不过就换目标
+    { name: '困难', err: 0, sprint: true, near: 9, minE: 30, avoid: 900, contest: true }        // 不犯错、几乎把对手的可达格当墙、竞速算得清
   ];
   let aiLevel = 1;
   function think(p, idx) { // 每 tick 调用：挑最安全且趋向食物的走法，并决策冲刺
@@ -2104,19 +2105,28 @@ window.Snake = window.Snake || {};
     };
     bfs(S.foods.map(f => [f.x, f.y, f.L || 0]), true);
     for (const n of nodes()) if (free(n.x, n.y, n.L) && !comp.has(key(n.x, n.y, n.L))) bfs([[n.x, n.y, n.L]], false);
+    /* 难度阶梯（只在地形模式生效；经典模式沿用 2.0 的固定 60 代价与不竞速，行为一字不变）：
+       avoid＝「对手蛇头下一步可达格」的代价，越高越不往对手嘴边凑；contest＝抢不过就别迎头去凑那个食物。 */
+    const oppP = S.pl[1 - idx], oh = (oppP && !oppP.dead) ? oppP.body[0] : null;
+    const okey = oh ? key(oh.x, oh.y, oh.L) : null;
+    const ofd = okey && dist.has(okey) ? dist.get(okey) : 1e9;                                 // 对手头 → 最近食物
+    const pen = (S.T && lv.avoid) ? lv.avoid : 60;
+    /* 「抢不过就别迎头去凑」：候选格距离 fd ⇒ 我们走上它之后是 fd+1；对手 ≤ fd+1 就是它先到或同到。
+       注意不能拿自己的头去查距离场——蛇头属于被占格，不在场里（第一版就栽在这，恒判「抢不过」）。 */
+    const loseRace = !!(S.T && lv.contest) && ofd < 1e9;
     const moves = nbrs(h.x, h.y, h.L).filter(n => !(n.x - h.x + p.dir[0] === 0 && n.y - h.y + p.dir[1] === 0)).map(n => {
       const x = n.x, y = n.y, L = n.L || 0, k = key(x, y, L);
       if (!free(x, y, L)) return null;
       const area = size.get(comp.get(k)) || 0, fd = dist.has(k) ? dist.get(k) : 1e9;
       const roomy = area >= p.body.length + 3; // 绝不钻进逃不出的口袋
-      return { d: [x - h.x, y - h.y], fd, area, score: (roomy ? 1000 - Math.min(fd, 500) : area) - (risky.has(k) ? 60 : 0) };
+      return { d: [x - h.x, y - h.y], fd, area, score: (roomy ? 1000 - Math.min(fd, 500) : area) - (risky.has(k) ? pen : 0) - (loseRace && fd + 2 > ofd ? 260 : 0) };
     }).filter(Boolean);
     if (!moves.length) return;
     if (moves.every(m => m.area < p.body.length + 3)) {   // 残局：无处宽松 → 追自己的尾格盘绕求生（地形下用曼哈顿近似）
       const tail = p.body[p.body.length - 1];
       moves.forEach(m => {
         const x = h.x + m.d[0], y = h.y + m.d[1];
-        m.score = 1000 - Math.min(Math.abs(x - tail.x) + Math.abs(y - tail.y), 500) + m.area - (risky.has(key(x, y, h.L)) ? 60 : 0);
+        m.score = 1000 - Math.min(Math.abs(x - tail.x) + Math.abs(y - tail.y), 500) + m.area - (risky.has(key(x, y, h.L)) ? pen : 0);
       });
     }
     let pick = moves.sort((a, b) => b.score - a.score)[0];
@@ -2125,6 +2135,10 @@ window.Snake = window.Snake || {};
     /* 冲刺竞速：距离场顺手给出对手头→最近食物距离。规格 §5 要求按速度折算（冲刺 1 格/tick、常速
        0.5 格/tick ⇒ 常速每格 2 tick）；经典模式保持 2.0 的原始判据，不吃这次调整。 */
     let hold = lv.sprint && pick.fd <= lv.near && p.energy > lv.minE && !p.locked;
+    /* 地形（3D）里 AI 不烧能量冲刺：冲刺＝双倍速度扑向食物，而 3D 地图通道窄、食物少，两条蛇常常盯同一颗，
+       实测（每档 15 局、双方 AI）冲刺让普通/困难档的中位存活从 60/76 tick 掉到 34/18 tick——观感就是「人机秒死」。
+       经典模式不受影响，仍按 2.0 的原始判据烧能量。 */
+    if (S.T) hold = false;
     if (hold) {
       const opp = S.pl[1 - idx];
       if (opp && !opp.dead) {

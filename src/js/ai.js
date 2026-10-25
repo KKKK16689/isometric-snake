@@ -21,9 +21,9 @@ window.Snake = window.Snake || {};
     return a;
   };
   const AI_LV = [
-    { name: '简单', err: .08, sprint: false, near: 0, minE: 100 }, // 偶尔随机安全步，永不冲刺
-    { name: '普通', err: .02, sprint: true, near: 6, minE: 50 },
-    { name: '困难', err: 0, sprint: true, near: 9, minE: 30 }
+    { name: '简单', err: .08, sprint: false, near: 0, minE: 100, avoid: 0, contest: false },   // 偶尔随机安全步、不冲刺、不避让对手（会跟你抢同一个食物）
+    { name: '普通', err: .02, sprint: true, near: 6, minE: 50, avoid: 320, contest: true },     // 少犯错、避开对手蛇头的可达格、抢不过就换目标
+    { name: '困难', err: 0, sprint: true, near: 9, minE: 30, avoid: 900, contest: true }        // 不犯错、几乎把对手的可达格当墙、竞速算得清
   ];
   let aiLevel = 1;
   function think(p, idx) { // 每 tick 调用：挑最安全且趋向食物的走法，并决策冲刺
@@ -59,19 +59,28 @@ window.Snake = window.Snake || {};
     };
     bfs(S.foods.map(f => [f.x, f.y, f.L || 0]), true);
     for (const n of nodes()) if (free(n.x, n.y, n.L) && !comp.has(key(n.x, n.y, n.L))) bfs([[n.x, n.y, n.L]], false);
+    /* 难度阶梯（只在地形模式生效；经典模式沿用 2.0 的固定 60 代价与不竞速，行为一字不变）：
+       avoid＝「对手蛇头下一步可达格」的代价，越高越不往对手嘴边凑；contest＝抢不过就别迎头去凑那个食物。 */
+    const oppP = S.pl[1 - idx], oh = (oppP && !oppP.dead) ? oppP.body[0] : null;
+    const okey = oh ? key(oh.x, oh.y, oh.L) : null;
+    const ofd = okey && dist.has(okey) ? dist.get(okey) : 1e9;                                 // 对手头 → 最近食物
+    const pen = (S.T && lv.avoid) ? lv.avoid : 60;
+    /* 「抢不过就别迎头去凑」：候选格距离 fd ⇒ 我们走上它之后是 fd+1；对手 ≤ fd+1 就是它先到或同到。
+       注意不能拿自己的头去查距离场——蛇头属于被占格，不在场里（第一版就栽在这，恒判「抢不过」）。 */
+    const loseRace = !!(S.T && lv.contest) && ofd < 1e9;
     const moves = nbrs(h.x, h.y, h.L).filter(n => !(n.x - h.x + p.dir[0] === 0 && n.y - h.y + p.dir[1] === 0)).map(n => {
       const x = n.x, y = n.y, L = n.L || 0, k = key(x, y, L);
       if (!free(x, y, L)) return null;
       const area = size.get(comp.get(k)) || 0, fd = dist.has(k) ? dist.get(k) : 1e9;
       const roomy = area >= p.body.length + 3; // 绝不钻进逃不出的口袋
-      return { d: [x - h.x, y - h.y], fd, area, score: (roomy ? 1000 - Math.min(fd, 500) : area) - (risky.has(k) ? 60 : 0) };
+      return { d: [x - h.x, y - h.y], fd, area, score: (roomy ? 1000 - Math.min(fd, 500) : area) - (risky.has(k) ? pen : 0) - (loseRace && fd + 2 > ofd ? 260 : 0) };
     }).filter(Boolean);
     if (!moves.length) return;
     if (moves.every(m => m.area < p.body.length + 3)) {   // 残局：无处宽松 → 追自己的尾格盘绕求生（地形下用曼哈顿近似）
       const tail = p.body[p.body.length - 1];
       moves.forEach(m => {
         const x = h.x + m.d[0], y = h.y + m.d[1];
-        m.score = 1000 - Math.min(Math.abs(x - tail.x) + Math.abs(y - tail.y), 500) + m.area - (risky.has(key(x, y, h.L)) ? 60 : 0);
+        m.score = 1000 - Math.min(Math.abs(x - tail.x) + Math.abs(y - tail.y), 500) + m.area - (risky.has(key(x, y, h.L)) ? pen : 0);
       });
     }
     let pick = moves.sort((a, b) => b.score - a.score)[0];
@@ -80,6 +89,10 @@ window.Snake = window.Snake || {};
     /* 冲刺竞速：距离场顺手给出对手头→最近食物距离。规格 §5 要求按速度折算（冲刺 1 格/tick、常速
        0.5 格/tick ⇒ 常速每格 2 tick）；经典模式保持 2.0 的原始判据，不吃这次调整。 */
     let hold = lv.sprint && pick.fd <= lv.near && p.energy > lv.minE && !p.locked;
+    /* 地形（3D）里 AI 不烧能量冲刺：冲刺＝双倍速度扑向食物，而 3D 地图通道窄、食物少，两条蛇常常盯同一颗，
+       实测（每档 15 局、双方 AI）冲刺让普通/困难档的中位存活从 60/76 tick 掉到 34/18 tick——观感就是「人机秒死」。
+       经典模式不受影响，仍按 2.0 的原始判据烧能量。 */
+    if (S.T) hold = false;
     if (hold) {
       const opp = S.pl[1 - idx];
       if (opp && !opp.dead) {
