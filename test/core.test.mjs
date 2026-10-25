@@ -307,17 +307,25 @@ test('远征模式：层图接管地图——24×24、视口 18、关卡出生�
   for (let i = 0; i < 6 && S.state === 'playing'; i++) stepOnce(sb);
   assert.notEqual(S.state, 'playing', '撞墙必须结束这一局');
 
-  /* 相机：死区内不推动、贴边时 clamp 在地图内 */
+  /* 相机：平滑跟随——每帧位移必须远小于一格（整格跳就是用户说的「卡」），贴边时收敛到 clamp 位置 */
   Snake.api.newGame(); Snake.api.start();
   const q = S.pl[0], half = (S.VIEW_N - 1) / 2;
-  for (let i = 0; i < 4; i++) stepOnce(sb);
-  const near = (a, b) => Math.abs(a - b) <= 2;   // 死区 2 格；贴地图边时允许被 clamp 顶住
-  assert.ok((near(q.body[0].x, S.camCX) || S.camCX === half) && (near(q.body[0].y, S.camCY) || S.camCY === half), '死区内不推动相机（贴边时被 clamp）');
+  let maxJump = 0, px0 = S.camCX, py0 = S.camCY;
+  for (let i = 0; i < 8; i++) {
+    stepOnce(sb);
+    maxJump = Math.max(maxJump, Math.abs(S.camCX - px0), Math.abs(S.camCY - py0));
+    px0 = S.camCX; py0 = S.camCY;
+  }
+  assert.ok(maxJump > 0 && maxJump < 1, '相机必须平滑移动、不许整格跳：单帧最大位移 ' + maxJump.toFixed(3) + ' 格');
+  const settle = n => { const t0 = sb.__t + 1; for (let i = 0; i < n; i++) Snake.api.update(t0 + i); };   // 每步 +1ms：不触发 tick，只看相机收敛
+  settle(40);
+  const near = (a, b) => Math.abs(a - b) <= 2.2;   // 死区 2 格 + 平滑收敛余量
+  assert.ok(near(q.body[0].x, S.camCX) && near(q.body[0].y, S.camCY), '相机会追上蛇头并停在死区里（贴边时被 clamp）');
   q.body = [{ x: 22, y: 22 }, { x: 21, y: 22 }, { x: 20, y: 22 }];
-  Snake.api.update(sb.__t + 5);
+  settle(40);
   assert.ok(S.camCX >= half && S.camCX <= S.N - 1 - half, '相机 x 必须在地图内');
   assert.ok(S.camCY >= half && S.camCY <= S.N - 1 - half, '相机 y 必须在地图内');
-  assert.equal(S.camCX, S.N - 1 - half, '追到右下角应被边界 clamp 住');
+  assert.ok(Math.abs(S.camCX - (S.N - 1 - half)) < .05, '追到右下角应收敛到边界 clamp');
 });
 
 test('经典模式不受层图影响：MAP_N/VIEW_N 等于棋盘、S.T 为空、出生点仍是 2.0 原样', () => {

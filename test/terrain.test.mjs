@@ -25,6 +25,27 @@ function load() {
 
 const L = () => load().LEVELS[0];
 
+/* 注册表里的每一张图都必须能过校验、能建图——以后加关卡时这条先炸，防止塞进不可达/不封闭的图 */
+test('关卡注册表：每张图都能过校验并建图，且大小/可达性达标', () => {
+  const S = load();
+  assert.ok(S.LEVELS.length >= 3, 'Stage 1 至少三张灰模图，实际 ' + S.LEVELS.length);
+  const ids = S.LEVELS.map(l => l.id);
+  assert.equal(new Set(ids).size, ids.length, '关卡 id 不能重复');
+  for (const lv of S.LEVELS) {
+    const rep = S.Terrain.validate(lv.map);
+    assert.ok(rep.walkable > 100, lv.id + ' 可走格太少：' + rep.walkable);
+    const T = S.Terrain.build(lv);
+    assert.equal(T.nodeCount(), rep.nodes, lv.id + ' build 与 validate 的层节点数不一致');
+    const p1 = lv.spawns[0];
+    assert.equal(T.reachable(p1.x, p1.y, 0, () => true).size, rep.walkable, lv.id + ' 所有可走层节点必须从 P1 可达');
+    assert.ok(S.levelById(lv.id) === lv, lv.id + ' 必须能按 id 查到');
+  }
+  assert.equal(S.levelById('test-24').map.length, 24);
+  assert.equal(S.levelById('harbor-32').map.length, 32);
+  assert.equal(S.levelById('ridges-40').map.length, 40, '要有比 24×24 更大的图，不然相机没得跟');
+  assert.equal(S.levelById('ridges-40').map[0].length, 40, '每行等长');
+});
+
 test('解析测试图：统计与参考校验器一致（596 层节点 / 457 可走）', () => {
   const S = load();
   const rep = S.Terrain.validate(L().map);

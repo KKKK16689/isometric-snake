@@ -16,7 +16,9 @@ window.Snake = window.Snake || {};
     p.spin = o.spin || 4; p.damp = o.damp || .99;
   }
   const pal = () => Snake.theme.current.canvas;
-  const at = (x, y) => { const [sx, sy] = K.P(x, y); return [sx, sy + K.HH - 6]; };
+  // 屏幕坐标：优先用渲染层的相机+抬升投影（远征才有），渲染层还没加载时退回 core 的 K.P
+  const at = (x, y) => (Snake.Render && Snake.Render.toScreen) ? Snake.Render.toScreen(x, y) :
+    (() => { const [sx, sy] = K.P(x, y); return [sx, sy + K.HH - 6]; })();
   function scatter(cx, cy, n, cols, up, spd) { // 中心散射：up 越大越向上，spd 为速度基数
     for (let i = 0; i < n; i++) {
       const a = Math.random() * 6.283, v = spd * (.4 + Math.random() * .6);

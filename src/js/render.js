@@ -42,10 +42,11 @@ window.Snake = window.Snake || {};
   /* 相机：把 core 每帧算好的 S.camCX/camCY 投到画布中心（经典模式直接归零） */
   function camUpdate() {
     if (!S.T) { camOX = 0; camOY = 0; return; }
-    const c = K.P(S.camCX, S.camCY);
-    camOX = c[0] - S.W / 2; camOY = c[1] - S.H / 2;
+    const c = K.P(S.camCX, S.camCY), px = 1 / (scale || 1);   // 一个设备像素对应的逻辑长度
+    camOX = Math.round((c[0] - S.W / 2) / px) * px;           // 偏移对齐设备像素：静态地块不抖，实体仍走亚像素
+    camOY = Math.round((c[1] - S.H / 2) / px) * px;
   }
-  const MARGIN = 2;   // 静态层比视口多画 2 格，相机越过 margin 才重建（规格 §4）
+  const MARGIN = 4;   // 静态层比视口多画 4 格，相机越过 margin 才重建（重建越稀，跟随时越不容易卡顿）
   const ITEM_MARGIN = 1;   // items 只多算 1 格：不可见格不参与逐帧绘制（规格 §4）
   let bX0 = 0, bY0 = 0, bX1 = -1, bY1 = -1;   // 当前静态层覆盖的格范围
   function viewBounds(mg = MARGIN) {
@@ -187,6 +188,12 @@ window.Snake = window.Snake || {};
     const t = o.terr, bot = (t.lower && t.lower.walkable ? t.lower.h : 0) * BLK, top = t.h * BLK;
     const cx = PX(o.x, o.y), cy = PY(o.x, o.y) + K.HH, a = K.HW * .94, b = K.HH * .94;
     if (top <= bot) return;
+    // 挡在蛇前面的高地形靠近时半透明：别把蛇和地图糊住（用户反馈：墙体遮住地图）
+    let al = 1;
+    const hd = S.pl[0] && S.pl[0].body[0];
+    if (hd && top > liftOf(hd.x, hd.y) + 2 && (o.x + o.y) > (hd.x + hd.y) &&
+        Math.abs(o.x - hd.x) + Math.abs(o.y - hd.y) <= 3) al = .34;
+    if (al < 1) ctx.globalAlpha = al;
     if (t.kind === 'deck') {   // 桥面：地面投影 + 两根斜柱（简报 Q5）
       diamond(cx, cy, a * .7, b * .7, 'rgba(0,0,0,.22)');
       const pw = a * .16;
@@ -197,6 +204,7 @@ window.Snake = window.Snake || {};
     if (top > blkTop(o.x, o.y + 1)) poly([[cx - a, cy - top], [cx, cy + b - top], [cx, cy + b - bot], [cx - a, cy - bot]], TERR_C[1]);
     if (top > blkTop(o.x + 1, o.y)) poly([[cx + a, cy - top], [cx, cy + b - top], [cx, cy + b - bot], [cx + a, cy - bot]], TERR_C[2]);
     diamond(cx, cy - top, a, b, t.kind === 'wall' ? TERR_C[2] : TERR_C[0]);   // 墙顶压暗，和台面区分
+    if (al < 1) ctx.globalAlpha = 1;
   }
   /* ---------- 特效（吃食/撞击/胜利特效由 particles.js 对象池负责） ---------- */
   const STARS = Array.from({ length: 40 }, (_, i) => [K.fr(i * 3 + 1), K.fr(i * 3 + 2), K.fr(i * 3 + 3) > .8 ? 2 : 1]);
@@ -439,8 +447,14 @@ window.Snake = window.Snake || {};
     if (S.gold) pushItem(S.gold.x, S.gold.y, 0, 0, 0, false, false, false, true, null, liftOf(S.gold.x, S.gold.y));
     items.length = ic;
     items.sort((a, b) => (a.x + a.y) - (b.x + b.y) || (a.terr ? a.terr.lyr : 0) - (b.terr ? b.terr.lyr : 0) || (a.terr ? 0 : 1) - (b.terr ? 0 : 1)); // 画家算法：后→前；同格地形先画、低层先画（规格 §4 深度键）
+    let occl = false;   // 有高地形挡在蛇头前面：最后补一层半透明轮廓（规格 §4）
+    const hd0 = S.pl[0] && S.pl[0].body[0];
     for (const o of items) {
-      if (o.terr) { drawTerr(o); continue; }   // 地形块（远征）：墙/高台/桥面，按层高抬升
+      if (o.terr) {
+        if (hd0 && !occl && o.terr.h * BLK > liftOf(hd0.x, hd0.y) + 2 && (o.x + o.y) > (hd0.x + hd0.y) &&
+          Math.abs(o.x - hd0.x) + Math.abs(o.y - hd0.y) <= 2) occl = true;
+        drawTerr(o); continue;   // 地形块（远征）：墙/高台/桥面，按层高抬升
+      }
       const zb = o.zb || 0;                    // 站在高台上的实体整体抬升（经典模式恒 0）
       if (o.gold) {   // 金苹果：金色立方，最后 2s 闪烁告警（游戏时钟，暂停不闪走）；辉光已在加法通道绘
         const remaining = K.TUNE.goldTtl - (S.last - S.gold.born);
@@ -461,6 +475,15 @@ window.Snake = window.Snake || {};
       }
     }
     S.pl.forEach((p, i) => headFx(p, t, i, PTS[i][0], PTS[i]));
+    if (occl && S.pl[0]) {   // 被挡住时只补「蛇头 + 前 2 节」的半透明轮廓，不给全蛇描边（规格 §4）
+      const p = S.pl[0], pts = PTS[0];
+      ctx.globalAlpha = .38;
+      for (let j = 0; j < Math.min(3, p.body.length); j++) {
+        const q = pts[j] || p.body[j], lift = liftOf(p.body[j].x, p.body[j].y);
+        diamond(PX(q.x, q.y), PY(q.x, q.y) + K.HH - lift, K.HW * .7, K.HH * .7, 'rgba(232,244,255,.6)');
+      }
+      ctx.globalAlpha = 1;
+    }
     S.pl.forEach((p, i) => { if (p.sprint) Snake.Fx.trail(p, i, dt); }); // 冲刺拖尾（lowFx 自动关）
     Snake.Fx.update(dt);
     Snake.Fx.draw(ctx);
@@ -514,5 +537,6 @@ window.Snake = window.Snake || {};
     }
     requestAnimationFrame(frame);
   }
-  Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: applyCanvasSize, ease, segPos };
+  const toScreen = (x, y) => [PX(x, y), PY(x, y) + K.HH - 6 + liftOf(Math.round(x), Math.round(y))];   // 给粒子层用：带相机与抬升
+  Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: applyCanvasSize, ease, segPos, toScreen };
 })();

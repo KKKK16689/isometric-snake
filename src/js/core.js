@@ -116,13 +116,17 @@ window.Snake = window.Snake || {};
   }
   /* 是否阻挡：有层图按层图（Stage 1 只看最高可走层 ⇒ 墙/水挡、高台与桥面可走），否则按棋盘边界 */
   const solid = (x, y) => S.T ? !S.T.hasWalk(x, y) : (x < 0 || y < 0 || x >= S.N || y >= S.N);
-  /* 相机：跟随 p0 头部，死区 2 格，clamp 在地图内；经典模式固定在地图中心（渲染偏移恒为 0） */
+  /* 相机：跟随 p0 头部——死区 2 格定出目标，再按指数平滑追上去（不跳格才丝滑）；经典模式固定在地图中心 */
   function camFollow() {
     if (!S.T) { S.camCX = (S.N - 1) / 2; S.camCY = (S.N - 1) / 2; return; }
     const h = S.pl[0] && S.pl[0].body[0]; if (!h) return;
     const half = (S.VIEW_N - 1) / 2, dz = 2;
-    if (Math.abs(h.x - S.camCX) > dz) S.camCX = h.x - Math.sign(h.x - S.camCX) * dz;
-    if (Math.abs(h.y - S.camCY) > dz) S.camCY = h.y - Math.sign(h.y - S.camCY) * dz;
+    const tx = Math.abs(h.x - S.camCX) > dz ? h.x - Math.sign(h.x - S.camCX) * dz : S.camCX;
+    const ty = Math.abs(h.y - S.camCY) > dz ? h.y - Math.sign(h.y - S.camCY) * dz : S.camCY;
+    const snap = Snake.hooks && Snake.hooks.noCamSmooth;                     // 系统「减弱动态」：直接贴到目标，不做缓动
+    const dt = S.frameDt > 0 ? S.frameDt : 1 / 60;
+    const k = snap ? 1 : 1 - Math.pow(.0009, dt);                            // 时间常数 ~0.14s，与帧率无关
+    S.camCX += (tx - S.camCX) * k; S.camCY += (ty - S.camCY) * k;
     S.camCX = Math.max(half, Math.min(S.N - 1 - half, S.camCX));
     S.camCY = Math.max(half, Math.min(S.N - 1 - half, S.camCY));
   }
