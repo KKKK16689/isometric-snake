@@ -136,6 +136,7 @@ body.mm #mm{display:block}
 <button id="vib" title="震动反馈：开">震动</button>
 <button id="daily" title="每日挑战：全球同一张棋盘">每日挑战</button>
 <button id="ghost" title="幽灵回放：关">幽灵</button>
+        <button id="terrain" title="3D 地形：关">3D</button>
 <button id="copy" title="复制本局成绩">复制成绩</button>
 <select id="spr" aria-label="冲刺音效" title="冲刺音效">
 <option value="b">喷气</option>
@@ -283,8 +284,16 @@ window.Snake = window.Snake || {};
     S.W = viewN * K.TW + 20; S.H = viewN * K.TH + K.OY + 12; S.OX = S.W / 2;
     bus.emit('resize', { n: viewN });    // render 监听并同步 canvas 尺寸
   }
-  const viewN = () => (typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches) ? 14 : 18;
-  /* 关卡：Stage 1 只有灰模测试图；层图（地形）由 terrain.js 建好后挂在 S.T 上 */
+  /* 视口格数：单人跟相机（手机 14 / 桌面 18）；双人模式地形下走「全景固定」⇒ 直接用整张地图宽度
+     （规格 §4：PK 保持全景固定视角，不用跟随相机 ⇒ 用能整张放下的小图 test-24） */
+  const viewN = () => {
+    if (S.terrain && S.T && K.MODES[S.mode].players === 2) return S.T.w;
+    return (typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches) ? 14 : 18;
+  };
+  /* 3D（地形）开关：与模式正交 —— ?terrain=1 开、?terrain=<关卡 id> 开并选图、?level=<id> 隐含开启；
+     ?mode=expedition 是「普通规则 + 地形」的预设（等价于 terrain=1），旧直链继续可用。 */
+  const tsOn = () => S.mode === 'expedition' || !!S.terrain;
+  /* 关卡：层图由 terrain.js 建好后挂在 S.T 上；3D 关闭时 S.T 为 null ⇒ 走经典棋盘 */
   function loadLevel(id) {
     const lv = Snake.levelById(id) || Snake.LEVELS[0];
     S.T = Snake.Terrain.build(lv); S.levelId = lv.id; S.levelName = lv.name;
@@ -312,9 +321,10 @@ window.Snake = window.Snake || {};
     S.camCX = Math.max(half, Math.min(S.N - 1 - half, S.camCX));
     S.camCY = Math.max(half, Math.min(S.N - 1 - half, S.camCY));
   }
-  /* 经典模式沿用 2.0 的榜/存档键（不动老数据）；远征按规格 §3.7 用 iso-snake-3: 前缀并绑定关卡 id */
-  const bestKey = () => S.mode === 'expedition' ? 'iso-snake-3:best-expedition-' + S.levelId : 'iso-snake-best2-' + S.mode;
-  const ghostKey = () => S.mode === 'expedition' ? 'iso-snake-3:ghost-expedition-' + S.levelId : 'iso-snake-ghost-' + S.mode;
+  /* 经典模式沿用 2.0 的榜/存档键（不动老数据）；开了 3D 按规格 §3.7 用 iso-snake-3: 前缀，
+     并把模式与关卡 id 都写进键里（同一关卡在不同模式下的成绩分开记） */
+  const bestKey = () => S.T ? 'iso-snake-3:best-' + S.mode + '-' + S.levelId : 'iso-snake-best2-' + S.mode;
+  const ghostKey = () => S.T ? 'iso-snake-3:ghost-' + S.mode + '-' + S.levelId : 'iso-snake-ghost-' + S.mode;
   function loadBest() { S.best = +safeGet(bestKey(), 0) || 0; }
   /* 本地统计（累计局数/食物/金苹果），持久化于 iso-snake-stats */
   function loadStats() { try { const o = JSON.parse(safeGet('iso-snake-stats', '{}')); S.stats = { games: +o.games || 0, food: +o.food || 0, gold: +o.gold || 0 }; } catch (e) {} }
@@ -416,8 +426,8 @@ window.Snake = window.Snake || {};
   }
   function newGame() {
     const m = K.MODES[S.mode];
-    if (S.mode === 'expedition') { if (!S.T) loadLevel(S.levelId || 'test-24'); setSize(S.T.w, viewN()); }
-    else { S.T = null; setSize(m.n, m.n); }   // 经典模式：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
+    if (tsOn()) { if (!S.T) loadLevel(S.levelId || 'test-24'); setSize(S.T.w, viewN()); }   // 3D：按关卡建层图，视口按模式定
+    else { S.T = null; setSize(m.n, m.n); }   // 未开 3D：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
     if (S.daily && S.seed) setSeed(S.seed);   // 每日挑战重开：随机流复位到同一种子（同种子同局）
     S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
     S.pl = [...Array(m.players)].map((_, i) => {
@@ -547,7 +557,7 @@ window.Snake = window.Snake || {};
   const setHold = (i, v) => { if (S.pl[i]) S.pl[i].hold = v; };
   function setMode(m) {
     S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0);
-    if (m === 'expedition') loadLevel(S.levelId || 'test-24');   // 进远征先建层图
+    if (tsOn()) loadLevel(S.levelId || 'test-24'); else S.T = null;   // 开了 3D 就建层图，回经典就清掉
     loadBest(); newGame(); bus.emit('hud');
   }
   function setSkin(p, k) { S.skin[p] = k; bus.emit('hud'); }
@@ -576,8 +586,12 @@ window.Snake = window.Snake || {};
     S.mode = 'normal'; S.daily = true;
     setSeed((+qs.get('seed') | 0) || dateSeed());
   }
-  if (qs.get('level')) S.levelId = qs.get('level');
-  // ?mode=expedition&level=test-24 直达：这里只记模式与关卡 id，层图留到 newGame 再建
+  S.terrain = false;   // 3D（地形）开关，默认关：只有 URL 明确要求时才开，经典直链行为不变
+  const tv = qs.get('terrain');
+  if (tv !== null && tv !== '0') { S.terrain = true; if (tv !== '1') S.levelId = tv; }   // ?terrain=1 / ?terrain=harbor-32
+  if (qs.get('level')) { S.levelId = qs.get('level'); S.terrain = true; }                 // ?level=<id> 隐含开启
+  if (S.mode === 'expedition') S.terrain = true;                                          // 远征＝普通规则 + 地形的预设
+  // ?mode=ai&terrain=1&level=test-24 直达：这里只记模式/开关/关卡 id，层图留到 newGame 再建
   // （core.js 是最先执行的脚本，此刻 levels.js / terrain.js 还没加载，不能在这里调 loadLevel）
   loadStats();
   S.ghostOn = safeGet('iso-snake-ghost-on', '0') === '1';
@@ -600,7 +614,13 @@ window.Snake = window.Snake || {};
     S.mode = 'expedition'; S.wins = [0, 0]; S.daily = false; setSeed(0);
     loadLevel(id || S.levelId || 'test-24'); loadBest(); newGame(); bus.emit('hud');
   }
-  Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, update };
+  function setTerrain(on, id) {   // 地形（3D）与模式正交，任何模式都能开关（用户要求：既保留原版、也能随时切升级版）
+    S.terrain = !!on;
+    if (id) S.levelId = id;
+    if (S.terrain) { if (!S.T) loadLevel(S.levelId || 'test-24'); } else S.T = null;
+    S.wins = [0, 0]; loadBest(); newGame(); bus.emit('hud');
+  }
+  Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, setTerrain, update };
 })();
 </script>
 <script>
@@ -833,7 +853,9 @@ window.Snake = window.Snake || {};
       },
       /* 占位/访问标记键（取代旧的 x*1024+y —— 层号参与，桥上桥下互不阻挡） */
       key(x, y, L) { return x + ',' + y + ',' + L; },
-      /* 层图邻接：四邻 + 同格其它层；成本 1（传送门边 Stage 2 接） */
+      /* 层图邻接：只连「四邻落点」＋传送门边，成本 1。
+         不给「同格换层」的边：core 的 step() 是 pick(nx,ny,L0) 选层的，原地换层在玩法里不可实现
+         （会变成原地不动 ⇒ 自撞），层图里若有这种边，AI 就会选到走不出来的步。 */
       neighbors(x, y, L) {
         const out = [];
         const cur = T.layerAt(x, y, L);
@@ -843,8 +865,6 @@ window.Snake = window.Snake || {};
           const p = T.pick(x + dx, y + dy, fromH);
           if (p) out.push({ x: x + dx, y: y + dy, L: p.h, cost: 1, portal: false });
         }
-        const a = T.at(x, y) || [];
-        for (const l of a) if (isWalk(l) && l.h !== fromH && Math.abs(l.h - fromH) <= 1) out.push({ x, y, L: l.h, cost: 1, portal: false });
         const cur2 = T.layerAt(x, y, fromH);
         if (cur2 && cur2.kind === 'portal' && cur2.portal) {   // 传送门＝层图上的双向边（规格 §3.4），不是瞬移特判
           const pe = T.portalTo(x, y, cur2.portal);
@@ -1400,7 +1420,7 @@ window.Snake = window.Snake || {};
      几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
   const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: .75 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
-  const BUILD = 'stage1.1';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
+  const BUILD = 'stage3.1';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
   const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
     const m = /(^|[?&])q=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
@@ -2001,6 +2021,15 @@ window.Snake = window.Snake || {};
   const S = Snake.S, K = Snake.K;
   const DLIST = Object.values(K.DIRS);
   const cellKey = (x, y) => x * 1024 + y; // 格哈希；N ≤ 1024 安全
+  /* 地形（3D）适配：节点 = 层图节点 (x,y,L)。经典模式一律走 cellKey + 四邻 + 棋盘边界，
+     保证 2.0 的 AI 行为与手感一字不变（经典 AI 行为锁就是靠这个前提交付的）。 */
+  const key = (x, y, L) => S.T ? S.T.key(x, y, L || 0) : cellKey(x, y);
+  const nbrs = (x, y, L) => S.T ? S.T.neighbors(x, y, L || 0) : DLIST.map(d => ({ x: x + d[0], y: y + d[1], L: 0, cost: 1, portal: false }));   // 统一返回 {x,y,L} 对象（地形层图本来就是对象）
+  const nodes = () => {   // 遍历全集：经典＝棋盘格（y 外 x 内，与 2.0 的补标记顺序一致）；地形＝层图可走节点
+    if (S.T) return S.T.walkables();
+    const a = []; for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) a.push({ x, y, L: 0 });
+    return a;
+  };
   const AI_LV = [
     { name: '简单', err: .08, sprint: false, near: 0, minE: 100 }, // 偶尔随机安全步，永不冲刺
     { name: '普通', err: .02, sprint: true, near: 6, minE: 50 },
@@ -2009,58 +2038,64 @@ window.Snake = window.Snake || {};
   let aiLevel = 1;
   function think(p, idx) { // 每 tick 调用：挑最安全且趋向食物的走法，并决策冲刺
     const lv = AI_LV[aiLevel], h = p.body[0], blocked = new Set(), risky = new Set();
-    S.pl.forEach(q => q.body.forEach((s, k) => { if (k === q.body.length - 1 && q.body.length > 1) return; blocked.add(cellKey(s.x, s.y)); })); // 对手尾巴即将让位
-    S.pl.forEach((q, j) => { if (j !== idx && !q.dead) DLIST.forEach(d => risky.add(cellKey(q.body[0].x + d[0], q.body[0].y + d[1]))); }); // 对手蛇头可能落点
-    const free = (x, y) => x >= 0 && y >= 0 && x < S.N && y < S.N && !blocked.has(cellKey(x, y));
-    /* 多源 BFS：dist = 格→最近食物距离；comp/size = 连通域编号与面积 */
+    S.pl.forEach(q => q.body.forEach((s, k) => { if (k === q.body.length - 1 && q.body.length > 1) return; blocked.add(key(s.x, s.y, s.L)); })); // 对手尾巴即将让位
+    S.pl.forEach((q, j) => { if (j !== idx && !q.dead) { const o = q.body[0]; nbrs(o.x, o.y, o.L).forEach(n => risky.add(key(n.x, n.y, n.L))); } }); // 对手蛇头可能落点
+    const free = (x, y, L) => {   // 经典＝棋盘内且未被占；地形＝该层存在且可走且未被占（层号参与，规格 §3.2）
+      if (!S.T) return x >= 0 && y >= 0 && x < S.N && y < S.N && !blocked.has(cellKey(x, y));
+      const l = S.T.layerAt(x, y, L || 0);
+      return !!l && l.walkable && !blocked.has(S.T.key(x, y, L || 0));
+    };
+    /* 多源 BFS：dist = 节点→最近食物距离；comp/size = 连通域编号与面积（经典＝棋盘格，地形＝层图节点） */
     const dist = new Map(), comp = new Map(), size = new Map();
     let cid = 0;
     const bfs = (sources, withDist) => {
       const id = cid++, q = [];
       for (const s of sources) {
-        const k = cellKey(s[0], s[1]);
+        const k = key(s[0], s[1], s[2]);
         if (comp.has(k)) continue;
-        comp.set(k, id); if (withDist) dist.set(k, 0); q.push([s[0], s[1], 0]);
+        comp.set(k, id); if (withDist) dist.set(k, 0); q.push([s[0], s[1], s[2] || 0, 0]);
       }
       if (!q.length) { cid--; return; }
       size.set(id, 0);
       for (let i = 0; i < q.length; i++) {
-        const [x, y, d] = q[i]; size.set(id, size.get(id) + 1);
-        for (const dd of DLIST) {
-          const nx = x + dd[0], ny = y + dd[1], k = cellKey(nx, ny);
-          if (!free(nx, ny) || comp.has(k)) continue;
-          comp.set(k, id); if (withDist) dist.set(k, d + 1); q.push([nx, ny, d + 1]);
+        const [x, y, L, d] = q[i]; size.set(id, size.get(id) + 1);
+        for (const n of nbrs(x, y, L)) {
+          if (!free(n.x, n.y, n.L)) continue;
+          const k = key(n.x, n.y, n.L);
+          if (comp.has(k)) continue;
+          comp.set(k, id); if (withDist) dist.set(k, d + 1); q.push([n.x, n.y, n.L || 0, d + 1]);
         }
       }
     };
-    bfs(S.foods.map(f => [f.x, f.y]), true);
-    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) if (free(x, y) && !comp.has(cellKey(x, y))) bfs([[x, y]], false);
-    const moves = DLIST.filter(d => !(d[0] + p.dir[0] === 0 && d[1] + p.dir[1] === 0)).map(d => {
-      const x = h.x + d[0], y = h.y + d[1], k = cellKey(x, y);
-      if (!free(x, y)) return null;
+    bfs(S.foods.map(f => [f.x, f.y, f.L || 0]), true);
+    for (const n of nodes()) if (free(n.x, n.y, n.L) && !comp.has(key(n.x, n.y, n.L))) bfs([[n.x, n.y, n.L]], false);
+    const moves = nbrs(h.x, h.y, h.L).filter(n => !(n.x - h.x + p.dir[0] === 0 && n.y - h.y + p.dir[1] === 0)).map(n => {
+      const x = n.x, y = n.y, L = n.L || 0, k = key(x, y, L);
+      if (!free(x, y, L)) return null;
       const area = size.get(comp.get(k)) || 0, fd = dist.has(k) ? dist.get(k) : 1e9;
       const roomy = area >= p.body.length + 3; // 绝不钻进逃不出的口袋
-      return { d, fd, area, score: (roomy ? 1000 - Math.min(fd, 500) : area) - (risky.has(k) ? 60 : 0) };
+      return { d: [x - h.x, y - h.y], fd, area, score: (roomy ? 1000 - Math.min(fd, 500) : area) - (risky.has(k) ? 60 : 0) };
     }).filter(Boolean);
     if (!moves.length) return;
-    if (moves.every(m => m.area < p.body.length + 3)) {   // 残局：无处宽松 → 追自己的尾格盘绕求生
+    if (moves.every(m => m.area < p.body.length + 3)) {   // 残局：无处宽松 → 追自己的尾格盘绕求生（地形下用曼哈顿近似）
       const tail = p.body[p.body.length - 1];
       moves.forEach(m => {
         const x = h.x + m.d[0], y = h.y + m.d[1];
-        m.score = 1000 - Math.min(Math.abs(x - tail.x) + Math.abs(y - tail.y), 500) + m.area - (risky.has(cellKey(x, y)) ? 60 : 0);
+        m.score = 1000 - Math.min(Math.abs(x - tail.x) + Math.abs(y - tail.y), 500) + m.area - (risky.has(key(x, y, h.L)) ? 60 : 0);
       });
     }
     let pick = moves.sort((a, b) => b.score - a.score)[0];
     if (Math.random() < lv.err) pick = moves[Math.floor(Math.random() * moves.length)];
     p.queue = [pick.d];
-    /* 冲刺竞速：距离场顺手给出对手头→最近食物距离，只有严格比对手早到才烧能量（平局省能量） */
+    /* 冲刺竞速：距离场顺手给出对手头→最近食物距离。规格 §5 要求按速度折算（冲刺 1 格/tick、常速
+       0.5 格/tick ⇒ 常速每格 2 tick）；经典模式保持 2.0 的原始判据，不吃这次调整。 */
     let hold = lv.sprint && pick.fd <= lv.near && p.energy > lv.minE && !p.locked;
     if (hold) {
       const opp = S.pl[1 - idx];
       if (opp && !opp.dead) {
-        const ok = cellKey(opp.body[0].x, opp.body[0].y);
+        const o = opp.body[0], ok = key(o.x, o.y, o.L);
         const ofd = dist.has(ok) ? dist.get(ok) : 1e9;
-        hold = pick.fd < ofd;
+        hold = S.T ? (pick.fd < ofd * (opp.sprint ? 1 : 2)) : (pick.fd < ofd);
       }
     }
     p.hold = hold;
@@ -2250,6 +2285,18 @@ window.Snake = window.Snake || {};
       if (S.ghostOn) toast('幽灵 = 你破纪录的那局' + (S.ghostMeta ? '（' + S.ghostMeta.score + ' 分 · ' + S.ghostMeta.date + '）' : ''));
     });
     ghostLabel();
+    /* 3D 地形开关：与模式正交——普通/双人/人机都能开，关掉就是 2.0 的原版玩法（用户要求两条线并行） */
+    const terrBtn = $('terrain');
+    const terrLabel = () => { if (!terrBtn) return; terrBtn.textContent = '3D'; terrBtn.classList.toggle('off', !S.terrain); terrBtn.title = '3D 地形：' + (S.terrain ? '开（' + (S.levelName || S.levelId) + '）' : '关'); };
+    if (terrBtn) {
+      terrBtn.addEventListener('click', () => {
+        api.setTerrain(!S.terrain);
+        terrLabel(); syncModeUi();
+        toast(S.terrain ? '3D 地形：开 · ' + (S.levelName || S.levelId) : '3D 地形：关 · 回到原版玩法');
+        terrBtn.blur();
+      });
+      terrLabel();
+    }
     function fallbackCopy(txt) {
       try {
         const ta = document.createElement('textarea');

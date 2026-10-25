@@ -92,8 +92,20 @@ test('层图邻接与占位键：层号参与，桥上桥下互不阻挡', () =>
   assert.ok(!nb.some(n => n.x === 5 && n.y === 16), '同格 h2 与 h0 差 2 > 1 ⇒ 不能直接上下（要靠引桥）');
   assert.ok(T.key(5, 16, 0) !== T.key(5, 16, 2), '不同层的占位键必须不同');
   assert.equal(T.key(5, 16, 0), '5,16,0');
-  const up = T.neighbors(17, 12, 1);                      // h1 引桥层
-  assert.ok(up.some(n => n.x === 17 && n.y === 12 && n.L === 2), '从 h1 引桥可踏上同格 deck h2（差值 1）');
+  const up = T.neighbors(5, 16, 2);                       // b 桥格（地面 h0 + 桥面 h2）：从桥面看四邻
+  assert.ok(up.every(n => !(n.x === 5 && n.y === 16)), '层图不含「同格换层」边——core 的 step() 是 pick(nx,ny,L0) 选层的，原地换层走不出来');
+  /* B 桥 (17..19,12) 两端有 h1 引桥：从引桥格走向相邻桥面格必须落到 deck h2（层间差值 1）。 */
+  let ramp = null, deck = null;
+  for (const c of T.walkables()) {
+    if (c.L !== 1) continue;
+    for (const n of T.neighbors(c.x, c.y, c.L)) {
+      const l2 = T.layerAt(n.x, n.y, 2);
+      if (n.L === 2 && l2 && l2.kind === 'deck') { ramp = c; deck = n; break; }
+    }
+    if (ramp) break;
+  }
+  assert.ok(ramp && deck, '应存在「h1 引桥 → 相邻格 deck h2」的层间转移（差值 1）');
+  assert.ok(!T.neighbors(ramp.x, ramp.y, ramp.L).some(n => n.x === ramp.x && n.y === ramp.y), '引桥层也不含同格换层边');
 });
 
 test('传送门：字母成对、两端可走（P(2,2)↔p(21,3)、Q(21,20)↔q(2,21)）', () => {

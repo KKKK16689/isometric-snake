@@ -11,6 +11,15 @@ window.Snake = window.Snake || {};
   const S = Snake.S, K = Snake.K;
   const DLIST = Object.values(K.DIRS);
   const cellKey = (x, y) => x * 1024 + y; // 格哈希；N ≤ 1024 安全
+  /* 地形（3D）适配：节点 = 层图节点 (x,y,L)。经典模式一律走 cellKey + 四邻 + 棋盘边界，
+     保证 2.0 的 AI 行为与手感一字不变（经典 AI 行为锁就是靠这个前提交付的）。 */
+  const key = (x, y, L) => S.T ? S.T.key(x, y, L || 0) : cellKey(x, y);
+  const nbrs = (x, y, L) => S.T ? S.T.neighbors(x, y, L || 0) : DLIST.map(d => ({ x: x + d[0], y: y + d[1], L: 0, cost: 1, portal: false }));   // 统一返回 {x,y,L} 对象（地形层图本来就是对象）
+  const nodes = () => {   // 遍历全集：经典＝棋盘格（y 外 x 内，与 2.0 的补标记顺序一致）；地形＝层图可走节点
+    if (S.T) return S.T.walkables();
+    const a = []; for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) a.push({ x, y, L: 0 });
+    return a;
+  };
   const AI_LV = [
     { name: '简单', err: .08, sprint: false, near: 0, minE: 100 }, // 偶尔随机安全步，永不冲刺
     { name: '普通', err: .02, sprint: true, near: 6, minE: 50 },
@@ -19,58 +28,64 @@ window.Snake = window.Snake || {};
   let aiLevel = 1;
   function think(p, idx) { // 每 tick 调用：挑最安全且趋向食物的走法，并决策冲刺
     const lv = AI_LV[aiLevel], h = p.body[0], blocked = new Set(), risky = new Set();
-    S.pl.forEach(q => q.body.forEach((s, k) => { if (k === q.body.length - 1 && q.body.length > 1) return; blocked.add(cellKey(s.x, s.y)); })); // 对手尾巴即将让位
-    S.pl.forEach((q, j) => { if (j !== idx && !q.dead) DLIST.forEach(d => risky.add(cellKey(q.body[0].x + d[0], q.body[0].y + d[1]))); }); // 对手蛇头可能落点
-    const free = (x, y) => x >= 0 && y >= 0 && x < S.N && y < S.N && !blocked.has(cellKey(x, y));
-    /* 多源 BFS：dist = 格→最近食物距离；comp/size = 连通域编号与面积 */
+    S.pl.forEach(q => q.body.forEach((s, k) => { if (k === q.body.length - 1 && q.body.length > 1) return; blocked.add(key(s.x, s.y, s.L)); })); // 对手尾巴即将让位
+    S.pl.forEach((q, j) => { if (j !== idx && !q.dead) { const o = q.body[0]; nbrs(o.x, o.y, o.L).forEach(n => risky.add(key(n.x, n.y, n.L))); } }); // 对手蛇头可能落点
+    const free = (x, y, L) => {   // 经典＝棋盘内且未被占；地形＝该层存在且可走且未被占（层号参与，规格 §3.2）
+      if (!S.T) return x >= 0 && y >= 0 && x < S.N && y < S.N && !blocked.has(cellKey(x, y));
+      const l = S.T.layerAt(x, y, L || 0);
+      return !!l && l.walkable && !blocked.has(S.T.key(x, y, L || 0));
+    };
+    /* 多源 BFS：dist = 节点→最近食物距离；comp/size = 连通域编号与面积（经典＝棋盘格，地形＝层图节点） */
     const dist = new Map(), comp = new Map(), size = new Map();
     let cid = 0;
     const bfs = (sources, withDist) => {
       const id = cid++, q = [];
       for (const s of sources) {
-        const k = cellKey(s[0], s[1]);
+        const k = key(s[0], s[1], s[2]);
         if (comp.has(k)) continue;
-        comp.set(k, id); if (withDist) dist.set(k, 0); q.push([s[0], s[1], 0]);
+        comp.set(k, id); if (withDist) dist.set(k, 0); q.push([s[0], s[1], s[2] || 0, 0]);
       }
       if (!q.length) { cid--; return; }
       size.set(id, 0);
       for (let i = 0; i < q.length; i++) {
-        const [x, y, d] = q[i]; size.set(id, size.get(id) + 1);
-        for (const dd of DLIST) {
-          const nx = x + dd[0], ny = y + dd[1], k = cellKey(nx, ny);
-          if (!free(nx, ny) || comp.has(k)) continue;
-          comp.set(k, id); if (withDist) dist.set(k, d + 1); q.push([nx, ny, d + 1]);
+        const [x, y, L, d] = q[i]; size.set(id, size.get(id) + 1);
+        for (const n of nbrs(x, y, L)) {
+          if (!free(n.x, n.y, n.L)) continue;
+          const k = key(n.x, n.y, n.L);
+          if (comp.has(k)) continue;
+          comp.set(k, id); if (withDist) dist.set(k, d + 1); q.push([n.x, n.y, n.L || 0, d + 1]);
         }
       }
     };
-    bfs(S.foods.map(f => [f.x, f.y]), true);
-    for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) if (free(x, y) && !comp.has(cellKey(x, y))) bfs([[x, y]], false);
-    const moves = DLIST.filter(d => !(d[0] + p.dir[0] === 0 && d[1] + p.dir[1] === 0)).map(d => {
-      const x = h.x + d[0], y = h.y + d[1], k = cellKey(x, y);
-      if (!free(x, y)) return null;
+    bfs(S.foods.map(f => [f.x, f.y, f.L || 0]), true);
+    for (const n of nodes()) if (free(n.x, n.y, n.L) && !comp.has(key(n.x, n.y, n.L))) bfs([[n.x, n.y, n.L]], false);
+    const moves = nbrs(h.x, h.y, h.L).filter(n => !(n.x - h.x + p.dir[0] === 0 && n.y - h.y + p.dir[1] === 0)).map(n => {
+      const x = n.x, y = n.y, L = n.L || 0, k = key(x, y, L);
+      if (!free(x, y, L)) return null;
       const area = size.get(comp.get(k)) || 0, fd = dist.has(k) ? dist.get(k) : 1e9;
       const roomy = area >= p.body.length + 3; // 绝不钻进逃不出的口袋
-      return { d, fd, area, score: (roomy ? 1000 - Math.min(fd, 500) : area) - (risky.has(k) ? 60 : 0) };
+      return { d: [x - h.x, y - h.y], fd, area, score: (roomy ? 1000 - Math.min(fd, 500) : area) - (risky.has(k) ? 60 : 0) };
     }).filter(Boolean);
     if (!moves.length) return;
-    if (moves.every(m => m.area < p.body.length + 3)) {   // 残局：无处宽松 → 追自己的尾格盘绕求生
+    if (moves.every(m => m.area < p.body.length + 3)) {   // 残局：无处宽松 → 追自己的尾格盘绕求生（地形下用曼哈顿近似）
       const tail = p.body[p.body.length - 1];
       moves.forEach(m => {
         const x = h.x + m.d[0], y = h.y + m.d[1];
-        m.score = 1000 - Math.min(Math.abs(x - tail.x) + Math.abs(y - tail.y), 500) + m.area - (risky.has(cellKey(x, y)) ? 60 : 0);
+        m.score = 1000 - Math.min(Math.abs(x - tail.x) + Math.abs(y - tail.y), 500) + m.area - (risky.has(key(x, y, h.L)) ? 60 : 0);
       });
     }
     let pick = moves.sort((a, b) => b.score - a.score)[0];
     if (Math.random() < lv.err) pick = moves[Math.floor(Math.random() * moves.length)];
     p.queue = [pick.d];
-    /* 冲刺竞速：距离场顺手给出对手头→最近食物距离，只有严格比对手早到才烧能量（平局省能量） */
+    /* 冲刺竞速：距离场顺手给出对手头→最近食物距离。规格 §5 要求按速度折算（冲刺 1 格/tick、常速
+       0.5 格/tick ⇒ 常速每格 2 tick）；经典模式保持 2.0 的原始判据，不吃这次调整。 */
     let hold = lv.sprint && pick.fd <= lv.near && p.energy > lv.minE && !p.locked;
     if (hold) {
       const opp = S.pl[1 - idx];
       if (opp && !opp.dead) {
-        const ok = cellKey(opp.body[0].x, opp.body[0].y);
+        const o = opp.body[0], ok = key(o.x, o.y, o.L);
         const ofd = dist.has(ok) ? dist.get(ok) : 1e9;
-        hold = pick.fd < ofd;
+        hold = S.T ? (pick.fd < ofd * (opp.sprint ? 1 : 2)) : (pick.fd < ofd);
       }
     }
     p.hold = hold;

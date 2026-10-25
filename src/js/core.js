@@ -108,8 +108,16 @@ window.Snake = window.Snake || {};
     S.W = viewN * K.TW + 20; S.H = viewN * K.TH + K.OY + 12; S.OX = S.W / 2;
     bus.emit('resize', { n: viewN });    // render 监听并同步 canvas 尺寸
   }
-  const viewN = () => (typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches) ? 14 : 18;
-  /* 关卡：Stage 1 只有灰模测试图；层图（地形）由 terrain.js 建好后挂在 S.T 上 */
+  /* 视口格数：单人跟相机（手机 14 / 桌面 18）；双人模式地形下走「全景固定」⇒ 直接用整张地图宽度
+     （规格 §4：PK 保持全景固定视角，不用跟随相机 ⇒ 用能整张放下的小图 test-24） */
+  const viewN = () => {
+    if (S.terrain && S.T && K.MODES[S.mode].players === 2) return S.T.w;
+    return (typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches) ? 14 : 18;
+  };
+  /* 3D（地形）开关：与模式正交 —— ?terrain=1 开、?terrain=<关卡 id> 开并选图、?level=<id> 隐含开启；
+     ?mode=expedition 是「普通规则 + 地形」的预设（等价于 terrain=1），旧直链继续可用。 */
+  const tsOn = () => S.mode === 'expedition' || !!S.terrain;
+  /* 关卡：层图由 terrain.js 建好后挂在 S.T 上；3D 关闭时 S.T 为 null ⇒ 走经典棋盘 */
   function loadLevel(id) {
     const lv = Snake.levelById(id) || Snake.LEVELS[0];
     S.T = Snake.Terrain.build(lv); S.levelId = lv.id; S.levelName = lv.name;
@@ -137,9 +145,10 @@ window.Snake = window.Snake || {};
     S.camCX = Math.max(half, Math.min(S.N - 1 - half, S.camCX));
     S.camCY = Math.max(half, Math.min(S.N - 1 - half, S.camCY));
   }
-  /* 经典模式沿用 2.0 的榜/存档键（不动老数据）；远征按规格 §3.7 用 iso-snake-3: 前缀并绑定关卡 id */
-  const bestKey = () => S.mode === 'expedition' ? 'iso-snake-3:best-expedition-' + S.levelId : 'iso-snake-best2-' + S.mode;
-  const ghostKey = () => S.mode === 'expedition' ? 'iso-snake-3:ghost-expedition-' + S.levelId : 'iso-snake-ghost-' + S.mode;
+  /* 经典模式沿用 2.0 的榜/存档键（不动老数据）；开了 3D 按规格 §3.7 用 iso-snake-3: 前缀，
+     并把模式与关卡 id 都写进键里（同一关卡在不同模式下的成绩分开记） */
+  const bestKey = () => S.T ? 'iso-snake-3:best-' + S.mode + '-' + S.levelId : 'iso-snake-best2-' + S.mode;
+  const ghostKey = () => S.T ? 'iso-snake-3:ghost-' + S.mode + '-' + S.levelId : 'iso-snake-ghost-' + S.mode;
   function loadBest() { S.best = +safeGet(bestKey(), 0) || 0; }
   /* 本地统计（累计局数/食物/金苹果），持久化于 iso-snake-stats */
   function loadStats() { try { const o = JSON.parse(safeGet('iso-snake-stats', '{}')); S.stats = { games: +o.games || 0, food: +o.food || 0, gold: +o.gold || 0 }; } catch (e) {} }
@@ -241,8 +250,8 @@ window.Snake = window.Snake || {};
   }
   function newGame() {
     const m = K.MODES[S.mode];
-    if (S.mode === 'expedition') { if (!S.T) loadLevel(S.levelId || 'test-24'); setSize(S.T.w, viewN()); }
-    else { S.T = null; setSize(m.n, m.n); }   // 经典模式：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
+    if (tsOn()) { if (!S.T) loadLevel(S.levelId || 'test-24'); setSize(S.T.w, viewN()); }   // 3D：按关卡建层图，视口按模式定
+    else { S.T = null; setSize(m.n, m.n); }   // 未开 3D：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
     if (S.daily && S.seed) setSeed(S.seed);   // 每日挑战重开：随机流复位到同一种子（同种子同局）
     S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
     S.pl = [...Array(m.players)].map((_, i) => {
@@ -372,7 +381,7 @@ window.Snake = window.Snake || {};
   const setHold = (i, v) => { if (S.pl[i]) S.pl[i].hold = v; };
   function setMode(m) {
     S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0);
-    if (m === 'expedition') loadLevel(S.levelId || 'test-24');   // 进远征先建层图
+    if (tsOn()) loadLevel(S.levelId || 'test-24'); else S.T = null;   // 开了 3D 就建层图，回经典就清掉
     loadBest(); newGame(); bus.emit('hud');
   }
   function setSkin(p, k) { S.skin[p] = k; bus.emit('hud'); }
@@ -401,8 +410,12 @@ window.Snake = window.Snake || {};
     S.mode = 'normal'; S.daily = true;
     setSeed((+qs.get('seed') | 0) || dateSeed());
   }
-  if (qs.get('level')) S.levelId = qs.get('level');
-  // ?mode=expedition&level=test-24 直达：这里只记模式与关卡 id，层图留到 newGame 再建
+  S.terrain = false;   // 3D（地形）开关，默认关：只有 URL 明确要求时才开，经典直链行为不变
+  const tv = qs.get('terrain');
+  if (tv !== null && tv !== '0') { S.terrain = true; if (tv !== '1') S.levelId = tv; }   // ?terrain=1 / ?terrain=harbor-32
+  if (qs.get('level')) { S.levelId = qs.get('level'); S.terrain = true; }                 // ?level=<id> 隐含开启
+  if (S.mode === 'expedition') S.terrain = true;                                          // 远征＝普通规则 + 地形的预设
+  // ?mode=ai&terrain=1&level=test-24 直达：这里只记模式/开关/关卡 id，层图留到 newGame 再建
   // （core.js 是最先执行的脚本，此刻 levels.js / terrain.js 还没加载，不能在这里调 loadLevel）
   loadStats();
   S.ghostOn = safeGet('iso-snake-ghost-on', '0') === '1';
@@ -425,5 +438,11 @@ window.Snake = window.Snake || {};
     S.mode = 'expedition'; S.wins = [0, 0]; S.daily = false; setSeed(0);
     loadLevel(id || S.levelId || 'test-24'); loadBest(); newGame(); bus.emit('hud');
   }
-  Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, update };
+  function setTerrain(on, id) {   // 地形（3D）与模式正交，任何模式都能开关（用户要求：既保留原版、也能随时切升级版）
+    S.terrain = !!on;
+    if (id) S.levelId = id;
+    if (S.terrain) { if (!S.T) loadLevel(S.levelId || 'test-24'); } else S.T = null;
+    S.wins = [0, 0]; loadBest(); newGame(); bus.emit('hud');
+  }
+  Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, setTerrain, update };
 })();

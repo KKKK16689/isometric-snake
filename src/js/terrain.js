@@ -76,7 +76,9 @@ window.Snake = window.Snake || {};
       },
       /* 占位/访问标记键（取代旧的 x*1024+y —— 层号参与，桥上桥下互不阻挡） */
       key(x, y, L) { return x + ',' + y + ',' + L; },
-      /* 层图邻接：四邻 + 同格其它层；成本 1（传送门边 Stage 2 接） */
+      /* 层图邻接：只连「四邻落点」＋传送门边，成本 1。
+         不给「同格换层」的边：core 的 step() 是 pick(nx,ny,L0) 选层的，原地换层在玩法里不可实现
+         （会变成原地不动 ⇒ 自撞），层图里若有这种边，AI 就会选到走不出来的步。 */
       neighbors(x, y, L) {
         const out = [];
         const cur = T.layerAt(x, y, L);
@@ -86,8 +88,6 @@ window.Snake = window.Snake || {};
           const p = T.pick(x + dx, y + dy, fromH);
           if (p) out.push({ x: x + dx, y: y + dy, L: p.h, cost: 1, portal: false });
         }
-        const a = T.at(x, y) || [];
-        for (const l of a) if (isWalk(l) && l.h !== fromH && Math.abs(l.h - fromH) <= 1) out.push({ x, y, L: l.h, cost: 1, portal: false });
         const cur2 = T.layerAt(x, y, fromH);
         if (cur2 && cur2.kind === 'portal' && cur2.portal) {   // 传送门＝层图上的双向边（规格 §3.4），不是瞬移特判
           const pe = T.portalTo(x, y, cur2.portal);
