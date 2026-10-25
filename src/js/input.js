@@ -170,6 +170,18 @@ window.Snake = window.Snake || {};
       if (S.ghostOn) toast('幽灵 = 你破纪录的那局' + (S.ghostMeta ? '（' + S.ghostMeta.score + ' 分 · ' + S.ghostMeta.date + '）' : ''));
     });
     ghostLabel();
+    /* 3D 地形开关：与模式正交——普通/双人/人机都能开，关掉就是 2.0 的原版玩法（用户要求两条线并行） */
+    const terrBtn = $('terrain');
+    const terrLabel = () => { if (!terrBtn) return; terrBtn.textContent = '3D'; terrBtn.classList.toggle('off', !S.terrain); terrBtn.title = '3D 地形：' + (S.terrain ? '开（' + (S.levelName || S.levelId) + '）' : '关'); };
+    if (terrBtn) {
+      terrBtn.addEventListener('click', () => {
+        api.setTerrain(!S.terrain);
+        terrLabel(); syncModeUi();
+        toast(S.terrain ? '3D 地形：开 · ' + (S.levelName || S.levelId) : '3D 地形：关 · 回到原版玩法');
+        terrBtn.blur();
+      });
+      terrLabel();
+    }
     function fallbackCopy(txt) {
       try {
         const ta = document.createElement('textarea');

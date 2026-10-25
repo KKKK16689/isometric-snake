@@ -477,3 +477,61 @@ test('经典模式行为锁：固定种子与输入脚本跑 1200 tick，状态�
   // 摘要涵盖：每 10 tick 的头部坐标/长度/分数/食物序列/金苹果/吃到数 —— 任何经典规则漂移都会变
   assert.equal(h >>> 0, 0xe692ec99, '经典模式行为摘要变了：' + (h >>> 0).toString(16) + '（ticks=' + ticks + '）');
 });
+
+/* ---------- 3D 地形与模式正交（用户要求：每个模式都能选开不开 3D，原版与升级版并行） ---------- */
+test('3D 开关：地形与模式正交——普通/双人/人机都能开，关了回到原版棋盘', () => {
+  const sb = load('', false, true), S = sb.Snake.S, api = sb.Snake.api;
+  for (const m of ['normal', 'pk', 'ai']) {
+    api.setMode(m);
+    api.setTerrain(true, 'test-24');
+    assert.equal(S.terrain, true, m + ': 3D 应已开启');
+    assert.equal(S.mode, m, m + ': 开 3D 不该改掉模式');
+    assert.ok(S.T && S.levelId === 'test-24' && S.MAP_N === 24 && S.N === 24, m + ': 层图应接管地图（24×24）');
+    api.setMode(m === 'normal' ? 'pk' : 'normal');    // 切模式时 3D 要跟着留在原位
+    assert.ok(S.T && S.terrain, m + ': 切模式后 3D 仍应开着');
+    api.setTerrain(false);
+    assert.equal(S.terrain, false, m + ': 3D 应已关闭');
+    assert.equal(S.T, null, m + ': 关 3D 应释放层图');
+    api.setMode(m);                                  // 回到该模式的原版棋盘
+    assert.equal(S.N, m === 'normal' ? 12 : 18, m + ': 关 3D 后应回到原版格数');
+    assert.ok(!S.T, m + ': 关 3D 后不该再有层图');
+  }
+});
+
+/* ---------- Stage 3：地形 AI 批量对局（验收：0 撞悬崖/撞墙/落水，0 卡死） ---------- */
+test('远征 AI 批量对局：层图 AI 在真实地图上不撞地形、不卡死（SOAK_GAMES 可放大到 500）', () => {
+  const GAMES = +(process.env.SOAK_GAMES || 12);
+  const maps = ['test-24', 'harbor-32', 'ridges-40'];
+  const lines = [];
+  for (const id of maps) {
+    const sb = load('?mode=expedition&level=' + id, true, true);
+    const S = sb.Snake.S, api = sb.Snake.api;
+    sb.Snake.Ai.setLevel(2);
+    let crash = 0, stuck = 0, tSum = 0, tMax = 0, sMax = 0;
+    for (let g = 0; g < GAMES; g++) {
+      api.setTerrain(true, id);
+      S.pl.forEach(p => p.ai = true);
+      api.start();
+      let t = 0, still = 0, hx = -1, hy = -1;
+      while (S.state === 'playing' && t < 1500) {
+        stepOnce(sb); t++;
+        for (const p of S.pl) for (const s of p.body) {   // 每一帧：蛇身每节都必须在可走层上
+          const l = S.T.layerAt(s.x, s.y, s.L || 0);
+          assert.ok(l && l.walkable, id + ' 第 ' + g + ' 局：蛇身出现在不可走层 (' + s.x + ',' + s.y + ',L' + (s.L || 0) + ')');
+        }
+        const h = S.pl[0].body[0];
+        if (h.x === hx && h.y === hy) { if (++still > 200) { stuck++; break; } }   // 卡死口径：头 200 tick 不动
+        else { still = 0; hx = h.x; hy = h.y; }
+      }
+      if (S.state === 'over') {   // 撞墙/撞悬崖/落水：core 在落点对象上打 bad 标记（core.js:301/305/311），头部就是那个对象
+        const h = S.pl[0].body[0];
+        if (h.bad) crash++;
+      }
+      tSum += t; tMax = Math.max(tMax, t); sMax = Math.max(sMax, S.pl[0].score);
+    }
+    lines.push(id + ': ' + GAMES + ' 局 · 撞地形 ' + crash + ' · 卡死 ' + stuck + ' · tick 均 ' + Math.round(tSum / GAMES) + ' 最大 ' + tMax + ' · 最高分 ' + sMax);
+    assert.equal(crash, 0, id + ': 层图 AI 不该撞墙/撞悬崖/落水');
+    assert.equal(stuck, 0, id + ': 层图 AI 不该卡死');
+  }
+  console.log('      远征 AI 对局：' + lines.join('  |  '));
+});
