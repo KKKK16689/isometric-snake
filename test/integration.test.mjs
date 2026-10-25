@@ -558,7 +558,17 @@ test('诊断开关与缓出插值：?q=0.6 固定背店倍率且掉帧也不改�
   const ease = H.sb.Snake.Render.ease;
   assert.equal(ease(0), 0); assert.equal(ease(1), 1); assert.equal(ease(-1), 0); assert.equal(ease(2), 1);
   assert.ok(ease(.5) > .6, `缓出中点应明显大于 0.5（实际 ${ease(.5).toFixed(3)}）`);
+  assert.ok(ease(.75) > .9, `承诺「下一格到来前基本到位」：a=0.75 时应走完 >90%（实际 ${ease(.75).toFixed(3)}）`);
   let prev = -1; for (let a = 0; a <= 1.0001; a += .05) { const v = ease(a); assert.ok(v >= prev, '缓出曲线应单调不减'); prev = v; }
+
+  // 缓出真的接在分段插值上（不是只导出了一个函数）：给假玩家直接问 segPos 要位置
+  const seg = H.sb.Snake.Render.segPos, out = { x: 0, y: 0 };
+  const fake = { body: [{ x: 2, y: 0 }, { x: 1, y: 0 }], moveT: 1000, moveTGame: 1000, moveP: 150, grew: false, tailFrom: null };
+  seg(fake, 0, 1000 + 37.5, out);                    // a = 0.25 → 缓出 0.469（线性只会到 0.25）
+  assert.ok(Math.abs(out.x - 1.469) < .01, `a=0.25 时应到 1.469 格（线性 1.25），实际 ${out.x.toFixed(3)}`);
+  assert.ok(Math.abs(out.y) < 1e-9, '同格的 y 不应漂移');
+  seg(fake, 0, 1000 + 112.5, out);                   // a = 0.75 → 0.953：下一格到来前基本到位
+  assert.ok(out.x > 1.95, `a=0.75 时应基本到位（>1.95），实际 ${out.x.toFixed(3)}`);
 
   // ?interp=legacy：core 同时记录游戏时钟（2.0 的插值起点），且它不晚于渲染时钟
   const Hl = makeDom({ search: '?interp=legacy&autostart=1' }); boot(Hl); Hl.api.start(); Hl.key('KeyA'); Hl.drive(40);
@@ -566,4 +576,8 @@ test('诊断开关与缓出插值：?q=0.6 固定背店倍率且掉帧也不改�
   assert.ok(p.moveTGame > 0, '?interp=legacy 下 core 应记录 moveTGame（游戏时钟）');
   assert.ok(p.moveTGame <= p.moveT + 1, `moveTGame（游戏时钟 ${p.moveTGame}）不应晚于 moveT（渲染时钟 ${p.moveT}）`);
   assert.ok(Hl.C.drawImage > 0, '?interp=legacy 下应正常渲染');
+  const segL = Hl.sb.Snake.Render.segPos, out2 = { x: 0, y: 0 };
+  const fakeL = { body: [{ x: 2, y: 0 }, { x: 1, y: 0 }], moveT: 1000, moveTGame: 925, moveP: 150, grew: false, tailFrom: null };
+  segL(fakeL, 0, 1000, out2);                        // legacy：a=(1000-925)/150=0.5 → 缓存后 0.782 格
+  assert.ok(Math.abs(out2.x - 1.782) < .01, `?interp=legacy 应从游戏时钟起算（期望 1.782），实际 ${out2.x.toFixed(3)}`);
 });

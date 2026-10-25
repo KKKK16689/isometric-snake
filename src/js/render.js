@@ -401,5 +401,5 @@ window.Snake = window.Snake || {};
     }
     requestAnimationFrame(frame);
   }
-  Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: applyCanvasSize, ease };
+  Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: applyCanvasSize, ease, segPos };
 })();
