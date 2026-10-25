@@ -919,6 +919,7 @@ window.Snake = window.Snake || {};
   /* ---------- ASCII → 层 ---------- */
   function layersOf(ch, x, y) {
     if (ch === 'L') return [{ h: 0, walkable: false, kind: 'lava' }];   // 熔岩：不可走，只做硬阻挡（暂停/重开等规则不受影响）
+    if (ch === 'I') return [{ h: 0, walkable: true, kind: 'ice' }];   // 冰面：可走，但一步会滑（滑行规则见 slide / core 的落地计算）
     switch (ch) {
       case '.': case '@': case '$': return [{ h: 0, kind: 'ground', walkable: true, portal: null }];
       case '1': return [{ h: 1, kind: 'ground', walkable: true, portal: null }];
@@ -1116,7 +1117,26 @@ window.Snake = window.Snake || {};
     return { w, h, nodes: probe.nodeCount(), walkable: probe.walkables().length };
   }
 
-  Snake.Terrain = { build, validate, layersOf };
+  
+  /* 冰面 transition：从 (x,y,L) 朝 dir 迈一步后，只要落在冰上就继续同向滑。
+     返回 { x, y, L, path }：path 为经过的格（不含起点），终点是停下时所在的可走格；
+     遇到不可走/高差 >1/传送门 ⇒ 停在上一格（绝不进入非法格）。AI 与 core 都要用这张表。 */
+  function slide(T, x, y, L, dir, max) {
+    const lim = max || 64;
+    let cx = x, cy = y, cL = L;
+    const path = [];
+    for (let i = 0; i < lim; i++) {
+      const nx = cx + dir[0], ny = cy + dir[1];
+      const l = T.layerAt(nx, ny, L);
+      const p = T.pick(nx, ny, cL);                 // §3.3 选层：高差 >1 或不可走都返回 null
+      if (!p || (l && l.kind === 'portal')) break;  // 撞墙/悬崖/门 ⇒ 停在原地
+      cx = nx; cy = ny; cL = p.h; path.push({ x: cx, y: cy, L: cL });
+      if (p.layer && p.layer.kind !== 'ice') break; // 落在非冰上 ⇒ 正常一步，滑行结束
+    }
+    return { x: cx, y: cy, L: cL, path };
+  }
+  Snake.Terrain = { build, validate, layersOf , slide };
+
 })();
 </script>
 <script>

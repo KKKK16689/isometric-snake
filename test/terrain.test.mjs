@@ -159,8 +159,7 @@ test('负例必须抛错：行不等长 / 未知字符 / 未实现的冰 / 边�
   assert.throws(() => S.Terrain.validate(short), /每行必须等长/);
   const unknown = one.slice(); unknown[5] = '#..12222X..............#';
   assert.throws(() => S.Terrain.validate(unknown), /未知地图字符/);
-  const ice = one.slice(); ice[5] = '#..12I221..............#';
-  assert.throws(() => S.Terrain.validate(ice), /Stage 4/);
+  assert.ok(S.Terrain.layersOf('I', 0, 0).some(l => l.kind === 'ice' && l.walkable), 'I 现在应当是冰层：可走但会滑（滑行表由 Terrain.slide 提供）');
   assert.ok(S.Terrain.layersOf('L', 0, 0).some(l => l.kind === 'lava' && !l.walkable), 'L 现在应当是熔岩层：不可走，只做硬阻挡');
   const open = one.slice(); open[0] = '#......................#';   // 顶边开口
   assert.throws(() => S.Terrain.validate(open), /边界未封闭/);
