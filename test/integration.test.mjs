@@ -74,7 +74,15 @@ function makeDom(opts = {}) {
   const cmp0 = El('div'), cmp1 = El('div'), hd0 = El('i'), hd1 = El('i'), fd0 = El('b'), fd1 = El('b');
   const sw0 = El('div'), sw1 = El('div'); sw0.dataset.p = '0'; sw1.dataset.p = '1';
   const modeBtns = ['easy', 'normal', 'pk', 'ai'].map(m => { const b = El('button'); b.dataset.m = m; return b; });
-  const mainEl = El('main'); mainEl.clientWidth = 1280; mainEl.clientHeight = 900;
+  const mainEl = El('main'); mainEl.clientWidth = opts.main?.w ?? 1280; mainEl.clientHeight = opts.main?.h ?? 900;
+  /* Stage 0：canvas 实测尺寸——沉浸模式取 fitCanvas 写入的内联像素；列式回退 opts.rect → main 尺寸 */
+  const rect = { width: opts.rect?.width ?? 0, height: opts.rect?.height ?? 0 };
+  cv.getBoundingClientRect = () => {
+    const sw = parseFloat(cv.style.width) || 0, sh = parseFloat(cv.style.height) || 0;
+    const rw = (sw > 0 && sh > 0) ? sw : (rect.width || mainEl.clientWidth);
+    const rh = (sw > 0 && sh > 0) ? sh : (rect.height || mainEl.clientHeight);
+    return { width: rw, height: rh, top: 0, left: 0, right: rw, bottom: rh, x: 0, y: 0 };
+  };
   const thEl = El('div'), metaEl = El('meta');
   const qsaMap = {
     '.eb': [eb0, eb1], '.pad .sp': [sp0, sp1], '.cmp .hd': [hd0, hd1], '.cmp .fd': [fd0, fd1], '.cmp': [cmp0, cmp1],
@@ -105,16 +113,22 @@ function makeDom(opts = {}) {
   sb.location = { search: opts.search || '', protocol: 'http:', href: 'http://127.0.0.1:8642/' };
   sb.performance = { now: () => sb.__t };
   sb.navigator = { userAgent: 'node', standalone: false, vibrate: ms => { vibes.push(ms); return true; }, clipboard: { writeText: t => { copied.push(t); return Promise.resolve(); } } };
-  sb.devicePixelRatio = 2; sb.innerWidth = 1280; sb.innerHeight = 900;
+  sb.devicePixelRatio = opts.dpr ?? 2; sb.innerWidth = 1280; sb.innerHeight = 900;
   sb.document = document_;
   sb.matchMedia = q => ({
     media: q,
-    matches: /prefers-reduced-motion/.test(q) ? !!opts.reduce : /display-mode: standalone/.test(q) ? !!opts.standalone : /orientation|min-width/.test(q) ? opts.wide !== false : false,
+    matches: /prefers-reduced-motion/.test(q) ? !!opts.reduce
+      : /display-mode: standalone/.test(q) ? !!opts.standalone
+      : /pointer: coarse/.test(q) ? !!opts.coarse
+      : /orientation|min-width/.test(q) ? opts.wide !== false : false,
     addEventListener: noop, removeEventListener: noop, addListener: noop, removeListener: noop,
   });
   const winH = {};
   sb.addEventListener = (t, fn) => { (winH[t] ||= []).push(fn); };
   sb.removeEventListener = noop;
+  const roList = [], vvH = {};                        // Stage 0：容器观察者 / 视觉视口事件登记（测试可手动触发）
+  sb.ResizeObserver = class { constructor(cb) { this.cb = cb; roList.push(this); } observe() {} unobserve() {} disconnect() {} };
+  sb.visualViewport = { width: 0, height: 0, addEventListener: (t, fn) => { (vvH[t] ||= []).push(fn); }, removeEventListener: noop };
   sb.requestAnimationFrame = cb => { rafCb = cb; return 1; };
   sb.cancelAnimationFrame = () => { rafCb = null; };
   sb.setTimeout = (cb, ms) => { const id = tid++; timers.push({ id, due: sb.__t + (+ms || 0), cb }); return id; };
@@ -154,7 +168,7 @@ function makeDom(opts = {}) {
   const key = code => fireWin('keydown', { code, preventDefault: noop });
   const keyUp = code => fireWin('keyup', { code, preventDefault: noop });
 
-  return { sb, S: sb.Snake.S, api: sb.Snake.api, byId, C, copied, vibes, store, drive, fireWin, fireDoc, fireEl, clickEl, key, keyUp, flushTimers, document: document_, modeBtns, dataBtns, sp0, sp1, cv, thEl };
+  return { sb, S: sb.Snake.S, api: sb.Snake.api, byId, C, copied, vibes, store, drive, fireWin, fireDoc, fireEl, clickEl, key, keyUp, flushTimers, document: document_, modeBtns, dataBtns, sp0, sp1, cv, thEl, mainEl, rect, roList, vvH };
 }
 
 function boot(H) {   // 与 src/index.html 内联启动块完全一致的顺序
@@ -172,6 +186,9 @@ function safeSteer(S, p) {   // 注入一个安全转向（非掉头、界内、
   return false;
 }
 const nextDir = p => (p.queue.length ? p.queue[p.queue.length - 1] : p.dir);
+/* Stage 0 契约：像素预算（移动 4.5M / 桌面 8M）与 dprEff 公式（与 render.js 同式，做回归锚点） */
+const MAX_PX = (w, h, coarse) => ((coarse || Math.min(w, h) < 600) ? 4.5e6 : 8e6);
+function dprEffFor(w, h, dpr, coarse) { return Math.max(1, Math.min(dpr, 3, Math.sqrt(MAX_PX(w, h, coarse) / Math.max(1, w * h)))); }
 /* 自动驾驶：每帧保命转向 + 把食物放到下一步落点（确定性吃食）；over 自动重开 */
 function autoPlay(H, frames, { feed = true } = {}) {
   const { S, api } = H;
@@ -269,9 +286,11 @@ test('集成：触屏（pad/滑动/点按）+ 冲刺键 + resize + 切后台暂�
   H.fireEl(H.cv, 'pointerup', { clientX: 204, clientY: 204 });
   assert.equal(H.S.state, 'paused', '点按未暂停');
   H.api.togglePause();
-  // resize：canvas 按 dpr 重设
-  H.sb.innerWidth = 900; H.fireWin('resize', {});
-  assert.equal(H.cv.width, H.S.W * 2);
+  // resize：canvas 背店按“实测显示尺寸 × dprEff”重设（Stage 0）
+  H.sb.innerWidth = 900; H.mainEl.clientWidth = 900; H.mainEl.clientHeight = 640; H.fireWin('resize', {});
+  const rect = H.cv.getBoundingClientRect();
+  assert.equal(H.cv.width, Math.round(rect.width * dprEffFor(rect.width, rect.height, 2, false)), '背店宽度应等于 rect×dprEff');
+  assert.equal(H.cv.height, Math.round(rect.height * dprEffFor(rect.width, rect.height, 2, false)), '背店高度应等于 rect×dprEff');
   H.drive(10);
   // 切后台自动暂停
   H.document.hidden = true; H.fireDoc('visibilitychange', {});
@@ -416,4 +435,56 @@ test('集成：构建产物 index.html 端到端（内联脚本直跑）', () =>
   assert.ok(H.C.fillRect > 0 && H.C.drawImage > 0, '产物应有真实渲染调用');
   assert.ok(p.body.length >= 4, `蛇应生长（实际 ${p.body.length}）`);
   assert.ok(H.vibes.length > 0, '吃食震动应触发');
+});
+
+/* ---------- 10. Stage 0 清晰度：背店按实际显示尺寸 × dprEff 重算（分辨率不再被拉伸糊化） ---------- */
+test('Stage 0：backing store = 实测显示尺寸 × dprEff（像素预算 / 高倍屏 / 事件重建 / rect 兜底）', () => {
+  const profiles = [
+    { name: '1024×768@2 桌面', main: { w: 1024, h: 768 }, dpr: 2 },
+    { name: '390×844@3 手机', main: { w: 390, h: 844 }, dpr: 3, coarse: true },
+    { name: '1920×1080@1 桌面', main: { w: 1920, h: 1080 }, dpr: 1 },
+    { name: '1200×2000@3 平板（4.5M 预算封顶）', main: { w: 1200, h: 2000 }, dpr: 3, coarse: true },
+  ];
+  for (const p of profiles) {
+    const H = makeDom({ main: p.main, dpr: p.dpr, coarse: p.coarse });   // 沉浸布局：fitCanvas 定 CSS 尺寸后实测
+    boot(H);
+    const r = H.cv.getBoundingClientRect();
+    const eff = dprEffFor(r.width, r.height, p.dpr, !!p.coarse);
+    assert.ok(Math.abs(H.cv.width - r.width * eff) <= 1, `${p.name}：背店宽度应 ≈ rect×dprEff（${r.width}×${eff}）`);
+    assert.ok(Math.abs(H.cv.height - r.height * eff) <= 1, `${p.name}：背店高度应 ≈ rect×dprEff`);
+    assert.ok(Math.abs(r.width / r.height - H.S.W / H.S.H) < .01, `${p.name}：CSS 尺寸应保持逻辑比例`);
+    H.drive(3);
+    assert.ok(H.C.drawImage > 0, `${p.name}：未执行渲染`);
+  }
+  // 高倍屏不再被硬顶在 2（2.0 的 dpr = min(devicePixelRatio, 2) 会让 3x 屏糊掉）
+  const H3 = makeDom({ main: { w: 390, h: 844 }, dpr: 3, coarse: true }); boot(H3);
+  assert.ok(H3.cv.width / H3.cv.getBoundingClientRect().width > 2.5, '3x 屏背店比例应 > 2.5');
+  // 2.0 的旧公式（固定 S.W*dpr）在宽屏下背店远小于显示像素 → 本用例锁死修复
+  const Hw = makeDom({ main: { w: 1920, h: 1080 }, dpr: 1 }); boot(Hw);
+  assert.ok(Hw.cv.width > Hw.S.W * 2, '宽屏背店应远超逻辑尺寸（旧公式会只有 S.W×1）');
+  // 事件重建：orientationchange / visualViewport resize / ResizeObserver
+  const H = makeDom({ main: { w: 900, h: 700 }, dpr: 2 }); boot(H);
+  const w0 = H.cv.width;
+  H.mainEl.clientWidth = 1500; H.mainEl.clientHeight = 1000; H.fireWin('orientationchange', {});
+  assert.notEqual(H.cv.width, w0, 'orientationchange 未重算背店');
+  const w1 = H.cv.width;
+  H.mainEl.clientHeight = 800; (H.vvH.resize || []).forEach(fn => fn());
+  assert.notEqual(H.cv.width, w1, 'visualViewport resize 未重算背店');
+  const w2 = H.cv.width;
+  H.mainEl.clientWidth = 600; H.mainEl.clientHeight = 500; H.roList.forEach(ro => ro.cb());
+  assert.notEqual(H.cv.width, w2, 'ResizeObserver 未重算背店');
+  // 横屏 PK（844×390 @3 手机横屏）：18 格棋盘 + 沉浸 fit 下背店同样按 rect×dprEff
+  const Hpk = makeDom({ main: { w: 844, h: 390 }, dpr: 3, coarse: true }); boot(Hpk);
+  Hpk.api.setMode('pk'); Hpk.drive(5);
+  assert.equal(Hpk.S.N, 18);
+  const rp = Hpk.cv.getBoundingClientRect();
+  const effp = dprEffFor(rp.width, rp.height, 3, true);
+  assert.ok(Math.abs(Hpk.cv.width - rp.width * effp) <= 1, '横屏 PK 背店宽度应 ≈ rect×dprEff');
+  assert.ok(Math.abs(Hpk.cv.height - rp.height * effp) <= 1, '横屏 PK 背店高度应 ≈ rect×dprEff');
+  assert.ok(Hpk.C.drawImage > 0, '横屏 PK 未渲染');
+  // rect 全 0（元素未布局）回退逻辑尺寸：不出现 0×0 或 NaN 背店
+  const Hz = makeDom({ wide: false, rect: { width: 0, height: 0 }, dpr: 2 }); boot(Hz);
+  assert.ok(Hz.cv.width > 0 && Hz.cv.height > 0 && Number.isFinite(Hz.cv.width), 'rect 为 0 时未回退逻辑尺寸');
+  Hz.drive(2);
+  assert.ok(Hz.C.drawImage > 0);
 });

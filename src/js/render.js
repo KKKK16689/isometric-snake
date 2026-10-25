@@ -5,7 +5,16 @@ window.Snake = window.Snake || {};
   const S = Snake.S, K = Snake.K, bus = Snake.bus, api = Snake.api;
   const $ = id => document.getElementById(id);
   const cv = $('c'); let ctx = cv.getContext('2d');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  /* ---------- Stage 0：清晰度——backing store 按“实际显示尺寸 × 有效比例”重算 ----------
+     2.0 一直按逻辑 S.W*dpr（dpr 硬顶 2）开背店，CSS 尺寸却是容器宽度：大屏/横屏 PK 下
+     等效比例可能只有 1.0x 左右，位图被放大即糊。改为：先定 CSS 尺寸 → 实测 rect →
+     dprEff（受像素预算约束）→ 背店 = round(css × dprEff)。逻辑坐标仍用 S.W/S.H，
+     绘制比例 scale = dprEff × k（k = cssW / S.W）。 */
+  const MAX_PX_DESKTOP = 8e6, MAX_PX_MOBILE = 4.5e6;    // 像素预算：桌面 8M / 移动 4.5M
+  let scale = 1;                                        // 逻辑单位 → 设备像素
+  let cssK = 1;                                         // CSS 像素 / 逻辑单位
+  let lastW = -1, lastH = -1, lastDpr = -1, lastSW = -1, lastSH = -1;  // 变更检测：尺寸没变不重建缓存
+  const snap = v => Math.round(v * scale) / scale;      // 静态顶点对齐设备像素（蛇插值坐标不取整，否则抖）
   let boardCache = null;                 // 地板离屏缓存
   let vig = null;                        // 背景晕影渐变缓存（resize/换主题时重建）
   let pal = Snake.theme.current.canvas;  // 当前主题渲染调色板（只读）
@@ -18,10 +27,11 @@ window.Snake = window.Snake || {};
     const key = col + '|' + a;
     let c = glowCache.get(key);
     if (!c) {
-      const R = 32; c = document.createElement('canvas'); c.width = c.height = R * 2;
-      const g2 = c.getContext('2d'), g = g2.createRadialGradient(R, R, 2, R, R, R);
+      const px = Math.max(32, Math.min(256, Math.ceil(64 * scale)));   // 精灵按当前设备比例生成（256 上限控显存）
+      const s2 = px / 64; c = document.createElement('canvas'); c.width = c.height = px;
+      const g2 = c.getContext('2d'), g = g2.createRadialGradient(px / 2, px / 2, 2 * s2, px / 2, px / 2, px / 2);
       g.addColorStop(0, K.rgba(col, a)); g.addColorStop(1, K.rgba(col, 0));
-      g2.fillStyle = g; g2.fillRect(0, 0, R * 2, R * 2);
+      g2.fillStyle = g; g2.fillRect(0, 0, px, px);
       glowCache.set(key, c);
     }
     return c;
@@ -49,11 +59,22 @@ window.Snake = window.Snake || {};
       cv.style.width = w + 'px'; cv.style.height = (w / ratio) + 'px';
     } else { cv.style.width = ''; cv.style.height = ''; }
   }
+  function maxPixels(w, h) {   // 像素预算：触屏 / 小屏按移动端上限，其余按桌面
+    const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    return (coarse || Math.min(w, h) < 600) ? MAX_PX_MOBILE : MAX_PX_DESKTOP;
+  }
   function applyCanvasSize() {
-    cv.width = S.W * dpr; cv.height = S.H * dpr; cv.style.aspectRatio = S.W + '/' + S.H;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    boardCache = null; vig = null;
-    fitCanvas();
+    fitCanvas();                                   // 1) 先定 CSS 尺寸（沉浸 fit / 列式 100%）
+    const r = cv.getBoundingClientRect ? cv.getBoundingClientRect() : null;
+    const w = r && r.width > 0 ? r.width : S.W, h = r && r.height > 0 ? r.height : S.H;   // 2) 实测；rect 为 0 回退逻辑尺寸
+    const dprEff = Math.max(1, Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(maxPixels(w, h) / Math.max(1, w * h))));
+    cv.style.aspectRatio = S.W + '/' + S.H;        // 保比例防拉伸（列式布局靠它定高）
+    if (w === lastW && h === lastH && dprEff === lastDpr && S.W === lastSW && S.H === lastSH) return;   // 无变化：不重建
+    lastW = w; lastH = h; lastDpr = dprEff; lastSW = S.W; lastSH = S.H;
+    cv.width = Math.round(w * dprEff); cv.height = Math.round(h * dprEff);
+    cssK = w / S.W; scale = dprEff * cssK;         // 逻辑 → CSS → 设备 两级比例
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    boardCache = null; vig = null; glowCache.clear();   // 缓存全部按新背店尺寸重建
   }
 
   function poly(pts, col) {
@@ -73,8 +94,8 @@ window.Snake = window.Snake || {};
   function drawBoard() {
     if (!boardCache) {
       if (!boardCv) boardCv = document.createElement('canvas');
-      boardCv.width = S.W * dpr; boardCv.height = S.H * dpr;   // 赋 width 同时清屏
-      const main = ctx; ctx = boardCv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      boardCv.width = cv.width; boardCv.height = cv.height;   // 赋 width 同时清屏（与主画布同背店尺寸）
+      const main = ctx; ctx = boardCv.getContext('2d'); ctx.setTransform(scale, 0, 0, scale, 0, 0);
       try { paintBoard(); } finally { ctx = main; }
       boardCache = boardCv;
     }
@@ -88,28 +109,28 @@ window.Snake = window.Snake || {};
     ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(b[0], b[1] + 8); ctx.lineTo(a[0], a[1] + 8); ctx.closePath(); ctx.fill();
   }
   function paintBoard() {
-    const l = [S.OX - S.N * K.HW, K.OY + S.N * K.HH], r = [S.OX + S.N * K.HW, K.OY + S.N * K.HH], b = [S.OX, K.OY + S.N * K.TH];
+    const l = [snap(S.OX - S.N * K.HW), snap(K.OY + S.N * K.HH)], r = [snap(S.OX + S.N * K.HW), snap(K.OY + S.N * K.HH)], b = [snap(S.OX), snap(K.OY + S.N * K.TH)];
     sideGrad(l, b, pal.floorLeft); sideGrad(r, b, pal.floorRight);
-    const dark = isDarkBg();
+    const dark = isDarkBg(), lw = 1 / cssK;   // 网格/倒角线宽 = 1 CSS px（不随显示缩放变粗）
     for (let y = 0; y < S.N; y++) for (let x = 0; x < S.N; x++) {
-      const sx = PX(x, y), sy = PY(x, y);
-      diamond(sx, sy + K.HH, K.HW, K.HH, (x + y) % 2 ? pal.floorTop : pal.floorRight);
-      ctx.strokeStyle = pal.grid; ctx.lineWidth = 1; // 网格线随主题
-      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + K.HW, sy + K.HH); ctx.lineTo(sx, sy + 2 * K.HH); ctx.lineTo(sx - K.HW, sy + K.HH); ctx.closePath(); ctx.stroke();
-      ctx.strokeStyle = dark ? 'rgba(255,255,255,.07)' : 'rgba(255,255,255,.5)'; ctx.lineWidth = 1; // 瓦片倒角：上两边高光
-      ctx.beginPath(); ctx.moveTo(sx - K.HW, sy + K.HH); ctx.lineTo(sx, sy); ctx.lineTo(sx + K.HW, sy + K.HH); ctx.stroke();
-      Snake.Patterns.draw(Snake.theme.current.pattern, ctx, sx, sy + K.HH, pal, x, y); // 主题地板图案（缓存层）
+      const sx = snap(PX(x, y)), sy = snap(PY(x, y) + K.HH);   // 瓦片中心：对齐设备像素，边缘不虚
+      diamond(sx, sy, K.HW, K.HH, (x + y) % 2 ? pal.floorTop : pal.floorRight);
+      ctx.strokeStyle = pal.grid; ctx.lineWidth = lw; // 网格线随主题
+      ctx.beginPath(); ctx.moveTo(sx, sy - K.HH); ctx.lineTo(sx + K.HW, sy); ctx.lineTo(sx, sy + K.HH); ctx.lineTo(sx - K.HW, sy); ctx.closePath(); ctx.stroke();
+      ctx.strokeStyle = dark ? 'rgba(255,255,255,.07)' : 'rgba(255,255,255,.5)'; ctx.lineWidth = lw; // 瓦片倒角：上两边高光
+      ctx.beginPath(); ctx.moveTo(sx - K.HW, sy); ctx.lineTo(sx, sy - K.HH); ctx.lineTo(sx + K.HW, sy); ctx.stroke();
+      Snake.Patterns.draw(Snake.theme.current.pattern, ctx, sx, sy, pal, x, y); // 主题地板图案（缓存层）
     }
-    ctx.strokeStyle = K.rgba(pal.glow, .45); ctx.lineWidth = 1; // 台缘描边光
-    ctx.beginPath(); ctx.moveTo(S.OX, K.OY); ctx.lineTo(r[0], r[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(l[0], l[1]); ctx.closePath(); ctx.stroke();
+    ctx.strokeStyle = K.rgba(pal.glow, .45); ctx.lineWidth = lw; // 台缘描边光
+    ctx.beginPath(); ctx.moveTo(snap(S.OX), snap(K.OY)); ctx.lineTo(r[0], r[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(l[0], l[1]); ctx.closePath(); ctx.stroke();
   }
   /* ---------- 特效（吃食/撞击/胜利特效由 particles.js 对象池负责） ---------- */
   const STARS = Array.from({ length: 40 }, (_, i) => [K.fr(i * 3 + 1), K.fr(i * 3 + 2), K.fr(i * 3 + 3) > .8 ? 2 : 1]);
   function halo(x, y, hgt, col) { // 身体鳞片廉价光晕（无模糊）；调用方保证处于加法通道内
     if (S.lowFx) return;
     const sx = PX(x, y), sy = PY(x, y);
-    diamond(sx, sy + K.HH - hgt, K.HW * 1.3, K.HH * 1.3, K.rgba(col, .10));
-    diamond(sx, sy + K.HH - hgt, K.HW * 1.7, K.HH * 1.7, K.rgba(col, .05));
+    diamond(sx, sy + K.HH - hgt, K.HW * 1.3, K.HH * 1.3, K.rgba(col, .07));   // Stage 0：降 alpha，减少边缘发软
+    diamond(sx, sy + K.HH - hgt, K.HW * 1.7, K.HH * 1.7, K.rgba(col, .035));
   }
   /* ---------- 移动插值：core 记录 p.moveT/moveP（游戏时钟），这里按帧时刻在“上一格→当前格”间线性插值 ---------- */
   const PTS = [[], []];                                   // 每玩家浮点格坐标缓存（逐帧复用，零分配）
@@ -230,14 +251,14 @@ window.Snake = window.Snake || {};
       if (!S.lowFx) for (let j = 0; j < arr.length; j++) diamond(PX(arr[j].x, arr[j].y), PY(arr[j].x, arr[j].y) + K.HH, K.HW * 1.3, K.HH * 1.3, c);
       let w = 0; for (let q = 0; q < p.trail.length; q++) { if (now - p.trail[q].b < 500) p.trail[w++] = p.trail[q]; } p.trail.length = w;   // 原地压实：逐帧零分配
       streak(p, now, arr[0]);
-      if (!S.lowFx) {   // 鳞片光晕（身体）+ 头部辉光精灵：加法通道内一次完成
+      if (!S.lowFx) {   // 鳞片光晕（身体）lowFx 关闭；头部辉光始终保留（Stage 0）
         const col = K.SK[S.skin[i]];
         for (let j = 1; j < arr.length; j++) { const k = Math.max(0, (j - (arr.length - 7)) / 7); halo(arr[j].x, arr[j].y, 8 - 3 * k, col.body[1]); }
-        if (!p.dead) glowAt(PX(arr[0].x, arr[0].y), PY(arr[0].x, arr[0].y) + K.HH - 9, 22, p.sprint ? pal.glow : col.body[1], .5);
       }
+      if (!p.dead) glowAt(PX(arr[0].x, arr[0].y), PY(arr[0].x, arr[0].y) + K.HH - 9, 22, p.sprint ? pal.glow : K.SK[S.skin[i]].body[1], .5);
     });
-    S.foods.forEach(f => { const sx = PX(f.x, f.y), sy = PY(f.x, f.y); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); if (!S.lowFx) glowAt(sx, sy + K.HH, 14 + Math.sin(t / 300) * 4, fg, .4); });
-    if (S.gold) { const sx = PX(S.gold.x, S.gold.y), sy = PY(S.gold.x, S.gold.y); diamond(sx, sy + K.HH, K.HW * 1.8, K.HH * 1.8, 'rgba(242,179,61,.22)'); if (!S.lowFx) glowAt(sx, sy + K.HH, 18 + Math.sin(t / 200) * 5, '#F2B33D', .55); }   // 金苹果地板光 + 辉光
+    S.foods.forEach(f => { const sx = PX(f.x, f.y), sy = PY(f.x, f.y); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); glowAt(sx, sy + K.HH, 14 + Math.sin(t / 300) * 4, fg, .4); });   // 食物辉光始终保留（Stage 0）
+    if (S.gold) { const sx = PX(S.gold.x, S.gold.y), sy = PY(S.gold.x, S.gold.y); diamond(sx, sy + K.HH, K.HW * 1.8, K.HH * 1.8, 'rgba(242,179,61,.22)'); glowAt(sx, sy + K.HH, 18 + Math.sin(t / 200) * 5, '#F2B33D', .55); }   // 金苹果地板光 + 辉光
     ctx.globalCompositeOperation = 'source-over';
     /* 幽灵回放：半透明灰白蛇，按当前步数逐格推进（数据 = 破纪录局存档的 p0 路径） */
     if (S.ghostOn && S.ghost && S.pl[0] && S.state !== 'over') {
@@ -307,9 +328,16 @@ window.Snake = window.Snake || {};
   }
   function boot() {
     applyCanvasSize();
-    bus.on('resize', applyCanvasSize);
-    addEventListener('resize', applyCanvasSize); // 窗口尺寸/方向变化重 fit
+    bus.on('resize', applyCanvasSize);                       // 模式切换：S.W/S.H 变化
+    addEventListener('resize', applyCanvasSize);             // 窗口尺寸变化
+    addEventListener('orientationchange', applyCanvasSize);  // 横竖屏切换
+    const vv = window.visualViewport;                        // 移动端地址栏收放 / 双指缩放
+    if (vv && vv.addEventListener) vv.addEventListener('resize', applyCanvasSize);
+    if (typeof ResizeObserver === 'function') {              // 容器尺寸变化（沉浸 fit / 分栏布局）
+      const m = document.querySelector('main');
+      if (m) new ResizeObserver(applyCanvasSize).observe(m);
+    }
     requestAnimationFrame(frame);
   }
-  Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: fitCanvas };
+  Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: applyCanvasSize };
 })();
