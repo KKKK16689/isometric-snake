@@ -208,9 +208,9 @@ window.Snake = window.Snake || {};
   }
   /* ---------- 特效（吃食/撞击/胜利特效由 particles.js 对象池负责） ---------- */
   const STARS = Array.from({ length: 40 }, (_, i) => [K.fr(i * 3 + 1), K.fr(i * 3 + 2), K.fr(i * 3 + 3) > .8 ? 2 : 1]);
-  function halo(x, y, hgt, col) { // 身体鳞片廉价光晕（无模糊）；调用方保证处于加法通道内
+  function halo(x, y, hgt, col, z) { // 身体鳞片廉价光晕（无模糊）；调用方保证处于加法通道内；z＝该节当前抬升
     if (S.lowFx) return;
-    const sx = PX(x, y), sy = PY(x, y);
+    const sx = PX(x, y), sy = PY(x, y) - (z || 0);
     diamond(sx, sy + K.HH - hgt, K.HW * 1.3, K.HH * 1.3, K.rgba(col, .07));   // Stage 0：降 alpha，减少边缘发软
     diamond(sx, sy + K.HH - hgt, K.HW * 1.7, K.HH * 1.7, K.rgba(col, .035));
   }
@@ -237,6 +237,8 @@ window.Snake = window.Snake || {};
     const from = j < p.body.length - 1 ? p.body[j + 1] : (p.grew ? cur : (p.tailFrom || cur));   // 中段来自 body[j+1]；生长帧尾段原地，否则来自让出的旧尾格
     const e = a <= 0 ? 0 : a >= 1 ? 1 : ease(a);
     out.x = from.x + (cur.x - from.x) * e; out.y = from.y + (cur.y - from.y) * e;
+    const zf = liftOf(from.x, from.y), zc = liftOf(cur.x, cur.y);
+    out.z = zf + (zc - zf) * e;   // 高度按同一条曲线插值：蛇是「爬」上台面，不是整条弹上去（用户反馈）
     return out;
   }
   let shakeT = 0;
@@ -249,8 +251,8 @@ window.Snake = window.Snake || {};
   const TR = [];                          // 光轨屏坐标缓冲（逐帧复用）
   function streak(p, now, hp) { // 冲刺光轨（头点用插值坐标）
     const n0 = p.trail.length;
-    for (let q = 0; q < n0; q++) { const s = p.trail[q]; if (!TR[q]) TR[q] = [0, 0, 0]; TR[q][0] = PX(s.x, s.y); TR[q][1] = PY(s.x, s.y) + K.HH - 6; TR[q][2] = 1 - (now - s.b) / 500; }
-    if (p.sprint) { if (!TR[n0]) TR[n0] = [0, 0, 0]; TR[n0][0] = PX(hp.x, hp.y); TR[n0][1] = PY(hp.x, hp.y) + K.HH - 6; TR[n0][2] = 1; }
+    for (let q = 0; q < n0; q++) { const s = p.trail[q]; if (!TR[q]) TR[q] = [0, 0, 0]; TR[q][0] = PX(s.x, s.y); TR[q][1] = PY(s.x, s.y) + K.HH - 6 - liftOf(s.x, s.y); TR[q][2] = 1 - (now - s.b) / 500; }
+    if (p.sprint) { if (!TR[n0]) TR[n0] = [0, 0, 0]; TR[n0][0] = PX(hp.x, hp.y); TR[n0][1] = PY(hp.x, hp.y) + K.HH - 6 - (hp.z || 0); TR[n0][2] = 1; }
     const n = n0 + (p.sprint ? 1 : 0);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     [[11, .14], [5, .35], [1.8, .9]].forEach(([w, a], k) => {
@@ -292,7 +294,7 @@ window.Snake = window.Snake || {};
     ctx.stroke();
   }
   function headFx(p, t, i, hp, pts) { // 眼睛、吐舌、冲刺闪电（头位置用插值坐标）
-    const cx = PX(hp.x, hp.y), cy = PY(hp.x, hp.y) + K.HH - 9, dx = p.dir[0], dy = p.dir[1];
+    const cx = PX(hp.x, hp.y), cy = PY(hp.x, hp.y) + K.HH - 9 - (hp.z || 0), dx = p.dir[0], dy = p.dir[1];
     const v = [(dx - dy) * K.HW, (dx + dy) * K.HH], w = [(-dy - dx) * K.HW, (-dy + dx) * K.HH];
     if (!p.dead) {
       [-1, 1].forEach(sg => {
@@ -402,17 +404,17 @@ window.Snake = window.Snake || {};
     ctx.globalCompositeOperation = 'lighter';   // 加法通道一次合批：地板反光/光轨/鳞片光晕/辉光精灵，整通道只切一次 composite
     S.pl.forEach((p, i) => { // 蛇映在地板的光（随插值）
       const c = K.rgba(K.SK[S.skin[i]].body[1], .16), arr = PTS[i];
-      if (!S.lowFx) for (let j = 0; j < arr.length; j++) diamond(PX(arr[j].x, arr[j].y), PY(arr[j].x, arr[j].y) + K.HH, K.HW * 1.3, K.HH * 1.3, c);
+      if (!S.lowFx) for (let j = 0; j < arr.length; j++) diamond(PX(arr[j].x, arr[j].y), PY(arr[j].x, arr[j].y) + K.HH - (arr[j].z || 0), K.HW * 1.3, K.HH * 1.3, c);
       let w = 0; for (let q = 0; q < p.trail.length; q++) { if (now - p.trail[q].b < 500) p.trail[w++] = p.trail[q]; } p.trail.length = w;   // 原地压实：逐帧零分配
       streak(p, now, arr[0]);
       if (!S.lowFx) {   // 鳞片光晕（身体）lowFx 关闭；头部辉光始终保留（Stage 0）
         const col = K.SK[S.skin[i]];
-        for (let j = 1; j < arr.length; j++) { const k = Math.max(0, (j - (arr.length - 7)) / 7); halo(arr[j].x, arr[j].y, 8 - 3 * k, col.body[1]); }
+        for (let j = 1; j < arr.length; j++) { const k = Math.max(0, (j - (arr.length - 7)) / 7); halo(arr[j].x, arr[j].y, 8 - 3 * k, col.body[1], arr[j].z || 0); }
       }
-      if (!p.dead) glowAt(PX(arr[0].x, arr[0].y), PY(arr[0].x, arr[0].y) + K.HH - 9, 22, p.sprint ? pal.glow : K.SK[S.skin[i]].body[1], .5);
+      if (!p.dead) glowAt(PX(arr[0].x, arr[0].y), PY(arr[0].x, arr[0].y) + K.HH - 9 - (arr[0].z || 0), 22, p.sprint ? pal.glow : K.SK[S.skin[i]].body[1], .5);
     });
-    S.foods.forEach(f => { const sx = PX(f.x, f.y), sy = PY(f.x, f.y); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); glowAt(sx, sy + K.HH, 14 + Math.sin(t / 300) * 4, fg, .4); });   // 食物辉光始终保留（Stage 0）
-    if (S.gold) { const sx = PX(S.gold.x, S.gold.y), sy = PY(S.gold.x, S.gold.y); diamond(sx, sy + K.HH, K.HW * 1.8, K.HH * 1.8, 'rgba(242,179,61,.22)'); glowAt(sx, sy + K.HH, 18 + Math.sin(t / 200) * 5, '#F2B33D', .55); }   // 金苹果地板光 + 辉光
+    S.foods.forEach(f => { const sx = PX(f.x, f.y), sy = PY(f.x, f.y) - liftOf(f.x, f.y); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); glowAt(sx, sy + K.HH, 14 + Math.sin(t / 300) * 4, fg, .4); });   // 食物辉光始终保留（Stage 0）
+    if (S.gold) { const sx = PX(S.gold.x, S.gold.y), sy = PY(S.gold.x, S.gold.y) - liftOf(S.gold.x, S.gold.y); diamond(sx, sy + K.HH, K.HW * 1.8, K.HH * 1.8, 'rgba(242,179,61,.22)'); glowAt(sx, sy + K.HH, 18 + Math.sin(t / 200) * 5, '#F2B33D', .55); }   // 金苹果地板光 + 辉光（跟着台面高度走）
     ctx.globalCompositeOperation = 'source-over';
     /* 幽灵回放：半透明灰白蛇，按当前步数逐格推进（数据 = 破纪录局存档的 p0 路径） */
     if (S.ghostOn && S.ghost && S.pl[0] && S.state !== 'over') {
@@ -442,7 +444,7 @@ window.Snake = window.Snake || {};
         }
       }
     }
-    S.pl.forEach((p, i) => PTS[i].forEach((s, j) => { const c = p.body[j] || s; pushItem(s.x, s.y, i, j, p.body.length, j === 0, p.dead, false, false, null, liftOf(c.x, c.y)); }));
+    S.pl.forEach((p, i) => PTS[i].forEach((s, j) => pushItem(s.x, s.y, i, j, p.body.length, j === 0, p.dead, false, false, null, s.z || 0)));
     S.foods.forEach(f => pushItem(f.x, f.y, 0, 0, 0, false, false, true, false, null, liftOf(f.x, f.y)));
     if (S.gold) pushItem(S.gold.x, S.gold.y, 0, 0, 0, false, false, false, true, null, liftOf(S.gold.x, S.gold.y));
     items.length = ic;
@@ -479,8 +481,8 @@ window.Snake = window.Snake || {};
       const p = S.pl[0], pts = PTS[0];
       ctx.globalAlpha = .38;
       for (let j = 0; j < Math.min(3, p.body.length); j++) {
-        const q = pts[j] || p.body[j], lift = liftOf(p.body[j].x, p.body[j].y);
-        diamond(PX(q.x, q.y), PY(q.x, q.y) + K.HH - lift, K.HW * .7, K.HH * .7, 'rgba(232,244,255,.6)');
+        const q = pts[j] || p.body[j];
+        diamond(PX(q.x, q.y), PY(q.x, q.y) + K.HH - (q.z || 0), K.HW * .7, K.HH * .7, 'rgba(232,244,255,.6)');
       }
       ctx.globalAlpha = 1;
     }

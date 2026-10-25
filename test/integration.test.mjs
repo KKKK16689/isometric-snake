@@ -739,6 +739,23 @@ test('集成：远征小地图——只在远征显示并重绘，经典模式�
 });
 
 /* ---------- Stage 1：远征渲染成本（相机 + 地形块不能把每帧绘制量拉爆） ---------- */
+test('集成：上台面是「爬」上去的——插值高度沿同一条曲线从下层抬到上层，不是整条弹上去', () => {
+  const H = makeDom({ search: '?mode=expedition&level=test-24&autostart=1', dpr: 2 });
+  boot(H);
+  const { Snake } = H.sb, S = H.S;
+  assert.ok(S.T, '远征必须已建层图');
+  const T = Snake.Terrain.build(Snake.levelById('test-24'));
+  const low = (T.topWalk(3, 4) || { h: 0 }).h, high = (T.topWalk(4, 4) || { h: 0 }).h;
+  assert.equal(low, 1, '测试图 (3,4) 应是 h1 台阶');
+  assert.equal(high, 2, '测试图 (4,4) 应是 h2 台面');
+  const p = { body: [{ x: 4, y: 4 }, { x: 3, y: 4 }], moveT: 0, moveP: 100, grew: false, tailFrom: null };
+  const out = {}, zAt = t => { Snake.Render.segPos(p, 0, t, out); return out.z; };
+  assert.ok(Math.abs(zAt(0) - 9) < .01, '刚进格必须还站在下层高度 9px，实际 ' + zAt(0));
+  const mid = zAt(50);
+  assert.ok(mid > 9 && mid < 18, '半程高度要在两层之间（正在爬），实际 ' + mid);
+  assert.ok(Math.abs(zAt(100) - 18) < .01 && Math.abs(zAt(140) - 18) < .01, '到位后停在上层 18px 且不过冲');
+});
+
 test('集成：远征渲染成本——地形块每帧绘制量有预算，静态层按 2 格 margin 才重建', () => {
   const H = makeDom({ search: '?mode=expedition&level=test-24&autostart=1', dpr: 2 });
   boot(H);
