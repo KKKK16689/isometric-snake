@@ -360,7 +360,8 @@ window.Snake = window.Snake || {};
     setSeed((+qs.get('seed') | 0) || dateSeed());
   }
   if (qs.get('level')) S.levelId = qs.get('level');
-  if (S.mode === 'expedition') loadLevel(S.levelId || 'test-24');   // ?mode=expedition&level=test-24 直达
+  // ?mode=expedition&level=test-24 直达：这里只记模式与关卡 id，层图留到 newGame 再建
+  // （core.js 是最先执行的脚本，此刻 levels.js / terrain.js 还没加载，不能在这里调 loadLevel）
   loadStats();
   S.ghostOn = safeGet('iso-snake-ghost-on', '0') === '1';
 

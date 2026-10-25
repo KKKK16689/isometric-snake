@@ -691,3 +691,35 @@ test('掉帧不补跑：600ms 大帧最多前进一格，恢复后也不追赶�
   assert.ok(steps(a1, a2) <= 2, '恢复后不该追赶式连跳：又走了 ' + steps(a1, a2) + ' 格');
   assert.equal(H.S.state, 'playing');
 });
+
+/* ---------- Stage 1：远征模式渲染（相机 + 灰模地形块 + 视口派生画布） ---------- */
+test('集成：远征模式渲染——层图接管地图、灰模地形块上屏、相机跟随并夹在地图内', () => {
+  const H = makeDom({ search: '?mode=expedition&level=test-24&autostart=1', dpr: 2 });
+  boot(H);
+  const S = H.S, half = (S.VIEW_N - 1) / 2;
+  assert.equal(S.mode, 'expedition', '?mode=expedition 应进入远征');
+  assert.equal(S.MAP_N, 24, '地图仍是 24×24');
+  assert.equal(S.VIEW_N, 18, '宽屏视口 18 格');
+  assert.equal(S.W, 18 * 30 + 20, '画布逻辑宽由视口派生（不再等于整图宽度）');
+  assert.ok(S.T && S.T.w === 24 && S.T.h === 24, '层图应已按关卡构建');
+  H.key('KeyW'); autoPlay(H, 40);
+  const main = H.cv.getContext('2d');
+  assert.ok(main._t.length > 0, '主画布应有绘制轨迹');
+  const trace = main._t.join(' ');
+  assert.ok(trace.includes('#8A94A6') || trace.includes('#5A6473') || trace.includes('#3B4252'),
+    '灰模地形块的三面配色应上屏（墙/高台/桥面）');
+  assert.ok(S.camCX >= half - .01 && S.camCX <= S.N - 1 - half + .01, '相机 X 应夹在 [half, N-1-half]：' + S.camCX);
+  assert.ok(S.camCY >= half - .01 && S.camCY <= S.N - 1 - half + .01, '相机 Y 应夹在 [half, N-1-half]：' + S.camCY);
+  const hx = S.pl[0].body[0].x, hy = S.pl[0].body[0].y;
+  assert.ok(Math.abs(S.camCX - hx) <= half + 1 && Math.abs(S.camCY - hy) <= half + 1, '相机应跟到蛇头附近（死区内）');
+  const board = H.created.find(c => c !== H.cv && c.width === H.cv.width && c.height === H.cv.height);
+  assert.ok(board, '静态层画布应存在，且与主画布同背店尺寸');
+});
+
+/* ---------- Stage 1：经典模式的相机偏移必须恒为 0（画面逐字等于 2.0） ---------- */
+test('集成：经典模式不建层图、相机固定在地图中心（画面与 2.0 一致的前提）', () => {
+  const A = makeDom({ search: '', dpr: 2 }); boot(A); A.key('KeyW'); autoPlay(A, 20);
+  assert.equal(A.S.T, null, '经典模式不该构建层图');
+  assert.equal(A.S.camCX, 5.5); assert.equal(A.S.camCY, 5.5);   // 12×12 棋盘中心，渲染偏移恒 0
+  assert.equal(A.S.W, 380, '经典画布逻辑宽不变');
+});

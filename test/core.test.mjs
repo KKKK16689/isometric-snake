@@ -287,9 +287,10 @@ test('远征模式：层图接管地图——24×24、视口 18、关卡出生�
   const { Snake } = sb, S = Snake.S;
   assert.equal(S.mode, 'expedition');
   assert.equal(S.levelId, 'test-24', 'URL 的 level 参数在启动时就生效');
-  assert.ok(S.T && S.T.w === 24, '层图在启动时已建立');
+  assert.equal(S.T, null, 'core 加载时 levels.js / terrain.js 还没执行，层图要等 newGame 再建');
 
   Snake.api.newGame();   // 页面启动块调的是 api.reset() → newGame；测试里显式走一遍
+  assert.ok(S.T && S.T.w === 24, 'newGame 后层图已建立');
   assert.equal(S.MAP_N, 24); assert.equal(S.N, 24);
   assert.equal(S.VIEW_N, 18, '桌面视口 18 格（窄屏 14）');
   assert.equal(S.W, 18 * 30 + 20); assert.equal(S.H, 18 * 15 + 34 + 12);
