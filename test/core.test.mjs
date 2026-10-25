@@ -567,3 +567,26 @@ test('传送门冷却：踩门传到对端后不会立刻弹回，也不会自�
   assert.ok(!(h2.x === 2 && h2.y === 2), '冷却期内不该立刻弹回原门，实际 ' + JSON.stringify([h2.x, h2.y]));
   assert.equal(p.portCool, false, '走完正常一步后应当解除冷却');
 });
+
+/* ---------- 冰面 transition：一步落点可能跨多格（§5：AI 必须先查这张表才允许在冰原跑） ---------- */
+test('冰面 transition：踩上冰面会继续同向滑，遇到非冰/墙/悬崖才停', () => {
+  const sb = load('', false, true);
+  const T = sb.Snake.Terrain.build({
+    id: 'ice-probe', map: ["###############","#.............#","#..III........#","#.III.........#","#...@III...$..#","#.............#","###############"],
+    spawns: [{ x: 4, y: 4, dir: 'downRight' }, { x: 11, y: 4, dir: 'upLeft' }], foods: 1, rulesetVersion: 1
+  });
+  // 从 (3,4) 地面往右：穿过 (5,4)(6,4)(7,4) 三格冰，在 (8,4) 地面停下
+  const a = sb.Snake.Terrain.slide(T, 4, 4, 0, [1, 0]);   // (4,4) 是出生点地面格，往右第一步就踩上冰
+  eq([a.x, a.y], 8, 4); assert.equal(a.path.length, 4, '踩上冰后应滑过 5→8 共 4 格');
+  assert.ok(a.path.every(s => T.hasWalk(s.x, s.y)), '滑行路径上不允许出现不可走格');
+  // 从 (4,4) 地面往上：落点不是冰 ⇒ 只走一格
+  const b = sb.Snake.Terrain.slide(T, 8, 4, 0, [0, -1]);   // (8,3) 是普通地面 ⇒ 一格即停
+  eq([b.x, b.y], 8, 3); assert.equal(b.path.length, 1, '非冰落点应当只走一步');
+  // 从 (4,3) 冰面往上：滑到 (4,2) 冰、再到 (4,1) 地面停下
+  const c = sb.Snake.Terrain.slide(T, 4, 3, 0, [0, -1]);
+  eq([c.x, c.y], 4, 1); assert.equal(c.path.length, 2, '冰上连续滑动应当在离开冰面那格停下');
+  // 从 (4,3) 往左：冰 → 冰 → 地面，且绝不越过边界墙
+  const d = sb.Snake.Terrain.slide(T, 4, 3, 0, [-1, 0]);
+  eq([d.x, d.y], 1, 3); assert.equal(d.path.length, 3, '连续三格冰后应停在地面');
+  assert.ok(T.hasWalk(d.x, d.y), '终点必须是可走格');
+});
