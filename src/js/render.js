@@ -256,7 +256,8 @@ window.Snake = window.Snake || {};
      直接原地覆写 TERR_C 的三个槽位，各处绘制代码不用动。 */
   const BIOMES = {
     grey: { top: '#8A94A6', left: '#5A6473', right: '#3B4252', strip: null },        // 灰模：测试图与既有两张开阔图
-    neon: { top: '#4B5A80', left: '#2C3757', right: '#1B2340', strip: '#5AC8FF' }     // 霓虹都市：偏冷的深蓝楼体 + 青色灯带
+    neon: { top: '#4B5A80', left: '#2C3757', right: '#1B2340', strip: '#5AC8FF' },    // 霓虹都市：偏冷的深蓝楼体 + 青色灯带
+    ruins: { top: '#7C8C63', left: '#4E5A3C', right: '#333C28', strip: null }    // 森林遗迹：苔绿石台（先不画灯带，晚点看效果再说）
   };
   const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（由 syncBiome 按关卡 biome 覆写）
   let STRIP = null;                                 // 楼面灯带色（biome 提供；灰模为 null ⇒ 不画）
