@@ -11,6 +11,16 @@ window.Snake = window.Snake || {};
      dprEff（受像素预算约束）→ 背店 = round(css × dprEff)。逻辑坐标仍用 S.W/S.H，
      绘制比例 scale = dprEff × k（k = cssW / S.W）。 */
   const MAX_PX_DESKTOP = 8e6, MAX_PX_MOBILE = 4.5e6;    // 像素预算：桌面 8M / 移动 4.5M
+  /* ---------- 自适应画质：帧率优先（用户授权「这个帧率你看着来，怎么舒服怎么来」）----------
+     实测最贵的是每帧的全画布像素操作（清屏 / 晕影 / 地板贴图），成本随背店面积线性增长；
+     弱 GPU、软件光栅或超高分屏下会吃掉 60fps 预算。做法：按窗口统计「漏帧率」（帧间隔 > 25ms
+     即 60Hz 下至少漏一帧；预热 90 帧跳过启动尖峰，避免把加载/切主题的瞬时抖动当成设备慢），
+     漏帧多就按 0.85 逐档降 dprEff，最低到「1 设备像素 = 1 CSS 像素」（清晰度下限，不会再糊）；
+     几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
+  let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false;
+  const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 15000 };
+  const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
+  let fpsT0 = 0, fpsN = 0, fpsVal = 0;
   let scale = 1;                                        // 逻辑单位 → 设备像素
   let cssK = 1;                                         // CSS 像素 / 逻辑单位
   let lastW = -1, lastH = -1, lastDpr = -1, lastSW = -1, lastSH = -1;  // 变更检测：尺寸没变不重建缓存
@@ -67,7 +77,7 @@ window.Snake = window.Snake || {};
     fitCanvas();                                   // 1) 先定 CSS 尺寸（沉浸 fit / 列式 100%）
     const r = cv.getBoundingClientRect ? cv.getBoundingClientRect() : null;
     const w = r && r.width > 0 ? r.width : S.W, h = r && r.height > 0 ? r.height : S.H;   // 2) 实测；rect 为 0 回退逻辑尺寸
-    const dprEff = Math.max(1, Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(maxPixels(w, h) / Math.max(1, w * h))));
+    const dprEff = Math.max(1, Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(maxPixels(w, h) / Math.max(1, w * h))) * qScale);
     cv.style.aspectRatio = S.W + '/' + S.H;        // 保比例防拉伸（列式布局靠它定高）
     if (w === lastW && h === lastH && dprEff === lastDpr && S.W === lastSW && S.H === lastSH) return;   // 无变化：不重建
     lastW = w; lastH = h; lastDpr = dprEff; lastSW = S.W; lastSH = S.H;
@@ -222,6 +232,7 @@ window.Snake = window.Snake || {};
     if (t3) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = '12px system-ui,sans-serif'; ctx.fillText(t3, S.W / 2, S.H / 2 + 42); }
   }
   function draw(t) {
+    if (qDirty) { qDirty = false; applyCanvasSize(); }   // 自适应画质换档：在帧首重建，避免半帧换尺寸
     ctx.clearRect(0, 0, S.W, S.H);
     if (pal.star) STARS.forEach((s, i) => { // 无星空主题（亮色）不绘星空
       ctx.fillStyle = K.rgba(pal.star, (.25 + .35 * Math.sin(t / 700 + i)).toFixed(2));
@@ -235,6 +246,23 @@ window.Snake = window.Snake || {};
       else if (S.frameDt > K.TUNE.lowFxOn) { S.lowFx = true; S.fxGood = 0; }          // 低端机自动关辉光
       else if (S.frameDt < K.TUNE.lowFxOff) { if (S.lowFx && ++S.fxGood >= K.TUNE.lowFxRecover) { S.lowFx = false; S.fxGood = 0; } } // 滞回恢复：卡顿是暂时的
       else S.fxGood = 0;
+    }
+    if (!document.hidden) {   // 自适应画质：窗口化漏帧统计（不用帧时均值，免得启动尖峰把均值抬高误降档）
+      if (qPre < Q.warmup) qPre++;
+      else {
+        qWin++;
+        if (raw * 1000 > Q.dropMs) qDrop++;
+        if (qWin >= Q.win) {
+          const ratio = qDrop / qWin;
+          if (ratio >= Q.dropHi && qScale > Q.min && t > qHold) {          // 漏帧多：降一档分辨率
+            qScale = Math.max(Q.min, qScale * (ratio > .35 ? .6 : Q.step));   // 严重掉帧直接大步降，尽快进预算
+            qHold = t + 2000; qProbe = t + Q.retryMs; qDirty = true;          // 真正重建放到下一帧开头，避免半帧换尺寸
+          } else if (ratio <= Q.dropLo && qScale < 1 && t > qProbe) {      // 几乎不漏帧且过了冷却：试探升回一档
+            qScale = Math.min(1, qScale / Q.step); qHold = t + 2000; qProbe = t + Q.retryMs * 1.5; qDirty = true;
+          }
+          qWin = 0; qDrop = 0;
+        }
+      }
     }
     const now = performance.now(), fg = K.MODES[S.mode].players === 2 ? '#cbd5e1' : pal.food;
     S.pl.forEach((p, i) => { // 每帧算一次插值坐标，后续所有绘制层共用
@@ -319,6 +347,15 @@ window.Snake = window.Snake || {};
       S.msg || (pk ? (S.winner < 0 ? '平局' : K.MODES[S.mode].ai ? (S.winner ? 'AI 获胜' : '你赢了') : 'P' + (S.winner + 1) + ' 获胜') : '游戏结束 · ' + S.pl[0].score + ' 分'),
       '点击画面重新开始' + (S.daily ? ' · 工具栏可复制成绩' : ''),
       statsLine);
+    if (FPS_ON) {   // 诊断读数（?fps=1）：帧率 / 平均帧时 / 画质档 / 背店；字号按 cssK 折算成屏幕上的 ~11px
+      fpsN++; if (t - fpsT0 > 500) { fpsVal = Math.round(fpsN * 1000 / (t - fpsT0)); fpsT0 = t; fpsN = 0; }
+      const txt = fpsVal + ' fps · ' + (S.frameDt * 1000).toFixed(1) + 'ms · 画质 ' + Math.round(qScale * 100) + '%'
+        + (S.lowFx ? ' · lowFx' : '') + ' · ' + cv.width + '×' + cv.height;
+      const k = 1 / cssK, fs = 11 * k, pad = 6 * k;
+      ctx.font = '600 ' + fs.toFixed(1) + 'px ui-monospace,monospace'; ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(pad, pad, txt.length * fs * .62 + pad * 2, fs + pad * 1.8);
+      ctx.fillStyle = '#7DD3FC'; ctx.fillText(txt, pad * 2, pad * 2 + fs * .82);
+    }
   }
   function frame(t) {
     api.update(t);                       // core 追赶式 tick

@@ -113,13 +113,22 @@ window.Snake = window.Snake || {};
     drawSwatches();
 
     // 棋盘滑动转向 / 点按暂停（短距+短按才算点按，慢按与小拖动不再误触暂停）
-    let sx0 = 0, sy0 = 0, st0 = 0;
+    // 转向在「越过阈值」的瞬间就生效，不再等抬手——抬手才判定会白白多等一整个手势的时间。
+    const SWIPE_MIN = 20;
+    let sx0 = 0, sy0 = 0, st0 = 0, fired = false;
     const cv = $('c');
-    cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; st0 = performance.now(); });
+    const swipe = e => {
+      const dx = e.clientX - sx0, dy = e.clientY - sy0;
+      if (fired || S.mode === 'pk' || Math.hypot(dx, dy) < SWIPE_MIN) return;
+      fired = true;
+      api.press(0, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+    };
+    cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; st0 = performance.now(); fired = false; });
+    cv.addEventListener('pointermove', e => { if (e.buttons || e.pointerType !== 'mouse') swipe(e); });
     cv.addEventListener('pointerup', e => {
       const dx = e.clientX - sx0, dy = e.clientY - sy0, dist = Math.hypot(dx, dy);
-      if (dist < 16 && performance.now() - st0 < 300) return api.togglePause();
-      if (dist >= 20 && S.mode !== 'pk') api.press(0, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+      if (!fired && dist < 16 && performance.now() - st0 < 300) return api.togglePause();
+      swipe(e);   // 慢速拖动（未达阈值前就抬手）兜底
     });
 
     /* ---------- 震动反馈（移动端）：吃食/撞击/起冲轻震，可一键关闭并持久化 ---------- */

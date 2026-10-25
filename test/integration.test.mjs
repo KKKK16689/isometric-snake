@@ -43,17 +43,19 @@ function makeDom(opts = {}) {
   const grad = { addColorStop() {} };
   const noop = () => {};
   function makeCtx(cvEl) {
+    const N = { fillRect: 0, fill: 0, stroke: 0, clearRect: 0, drawImage: 0 };   // 本画布计数器：验证“静态层不逐帧重画”
     return {
+      _n: N,
       canvas: cvEl,
       fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1, globalCompositeOperation: 'source-over',
       shadowBlur: 0, shadowColor: '', font: '', textAlign: 'start', textBaseline: 'alphabetic',
       filter: 'none', lineCap: 'butt', lineJoin: 'miter', imageSmoothingEnabled: true,
       save: noop, restore: noop, translate: noop, scale: noop, rotate: noop, setTransform: noop, transform: noop,
-      clearRect: noop, fillRect: () => { C.fillRect++; }, strokeRect: noop,
+      clearRect: () => { N.clearRect++; }, fillRect: () => { C.fillRect++; N.fillRect++; }, strokeRect: noop,
       beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop, arc: noop, arcTo: noop, ellipse: noop, rect: noop,
-      quadraticCurveTo: noop, bezierCurveTo: noop, fill: noop, stroke: noop, clip: noop, setLineDash: noop,
+      quadraticCurveTo: noop, bezierCurveTo: noop, fill: () => { N.fill++; }, stroke: () => { N.stroke++; }, clip: noop, setLineDash: noop,
       fillText: () => { C.fillText++; }, strokeText: noop, measureText: t => ({ width: (t ? String(t).length : 0) * 8 }),
-      drawImage: () => { C.drawImage++; },
+      drawImage: () => { C.drawImage++; N.drawImage++; },
       createRadialGradient: () => grad, createLinearGradient: () => grad, createPattern: () => null,
       getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
       putImageData: noop,
@@ -83,20 +85,22 @@ function makeDom(opts = {}) {
     const rh = (sw > 0 && sh > 0) ? sh : (rect.height || mainEl.clientHeight);
     return { width: rw, height: rh, top: 0, left: 0, right: rw, bottom: rh, x: 0, y: 0 };
   };
+  mainEl.getBoundingClientRect = () => ({ width: mainEl.clientWidth, height: mainEl.clientHeight, top: 0, left: 0, right: mainEl.clientWidth, bottom: mainEl.clientHeight, x: 0, y: 0 });
+  cv.offsetParent = mainEl;                            // Stage 0.1：动态层按静态层的 offsetParent 定位（真实页面里是 .stage 或 main）
   const thEl = El('div'), metaEl = El('meta');
   const qsaMap = {
     '.eb': [eb0, eb1], '.pad .sp': [sp0, sp1], '.cmp .hd': [hd0, hd1], '.cmp .fd': [fd0, fd1], '.cmp': [cmp0, cmp1],
     '.sw': [sw0, sw1], '.pad button[data-s]': dataBtns, '.mode button[data-m]': modeBtns,
   };
   const qsMap = { 'main': mainEl, 'meta[name="theme-color"]': metaEl, '.th': thEl };
-  const docH = {};
+  const docH = {}, created = [];   // created：createElement 产出的元素（含 Stage 0.1 的动态层画布 #cd）
   const document_ = {
     hidden: false, fullscreenElement: null,
     documentElement: El('html'), body: El('body'),
     getElementById: id => byId[id] ?? null,
     querySelector: sel => qsMap[sel] ?? null,
     querySelectorAll: sel => qsaMap[sel] ?? [],
-    createElement: tag => (tag === 'canvas' ? makeCanvas(El(tag)) : El(tag)),
+    createElement: tag => { const el = tag === 'canvas' ? makeCanvas(El(tag)) : El(tag); created.push(el); return el; },
     addEventListener: (t, fn) => { (docH[t] ||= []).push(fn); },
     execCommand: () => true, exitFullscreen: noop,
   };
@@ -168,7 +172,7 @@ function makeDom(opts = {}) {
   const key = code => fireWin('keydown', { code, preventDefault: noop });
   const keyUp = code => fireWin('keyup', { code, preventDefault: noop });
 
-  return { sb, S: sb.Snake.S, api: sb.Snake.api, byId, C, copied, vibes, store, drive, fireWin, fireDoc, fireEl, clickEl, key, keyUp, flushTimers, document: document_, modeBtns, dataBtns, sp0, sp1, cv, thEl, mainEl, rect, roList, vvH };
+  return { sb, S: sb.Snake.S, api: sb.Snake.api, byId, C, copied, vibes, store, created, drive, fireWin, fireDoc, fireEl, clickEl, key, keyUp, flushTimers, document: document_, modeBtns, dataBtns, sp0, sp1, cv, thEl, mainEl, rect, roList, vvH };
 }
 
 function boot(H) {   // 与 src/index.html 内联启动块完全一致的顺序
@@ -280,6 +284,21 @@ test('集成：触屏（pad/滑动/点按）+ 冲刺键 + resize + 切后台暂�
   H.drive(3);
   H.fireEl(H.cv, 'pointerup', { clientX: 170, clientY: 100 });
   H.drive(2);
+  // 滑动转向现在「越过阈值」就生效，不必等抬手（手感：少等一整个手势的时间）
+  let pressed = null; const realPress = H.sb.Snake.api.press;
+  H.sb.Snake.api.press = (i, name) => { pressed = name; return realPress(i, name); };
+  H.fireEl(H.cv, 'pointerdown', { clientX: 100, clientY: 100, pointerType: 'touch' });
+  H.fireEl(H.cv, 'pointermove', { clientX: 140, clientY: 100, pointerType: 'touch', buttons: 0 });
+  assert.equal(pressed, 'right', '越过阈值应立即转向（不必等抬手）');
+  pressed = null;
+  H.fireEl(H.cv, 'pointermove', { clientX: 200, clientY: 100, pointerType: 'touch', buttons: 0 });
+  assert.equal(pressed, null, '同一次手势只触发一次转向');
+  H.fireEl(H.cv, 'pointerup', { clientX: 200, clientY: 100, pointerType: 'touch' });
+  assert.equal(H.S.state, 'playing', '滑动手势抬手不应误触暂停');
+  H.fireEl(H.cv, 'pointerdown', { clientX: 300, clientY: 300, pointerType: 'mouse' });
+  H.fireEl(H.cv, 'pointermove', { clientX: 400, clientY: 300, pointerType: 'mouse', buttons: 0 });
+  assert.equal(pressed, null, '鼠标未按下时移动不应转向');
+  H.sb.Snake.api.press = realPress;
   // 点按暂停：<16px 且 <300ms
   H.fireEl(H.cv, 'pointerdown', { clientX: 200, clientY: 200 });
   H.drive(1);
@@ -487,4 +506,23 @@ test('Stage 0：backing store = 实测显示尺寸 × dprEff（像素预算 / �
   assert.ok(Hz.cv.width > 0 && Hz.cv.height > 0 && Number.isFinite(Hz.cv.width), 'rect 为 0 时未回退逻辑尺寸');
   Hz.drive(2);
   assert.ok(Hz.C.drawImage > 0);
+});
+
+/* ---------- 11. 自适应画质：帧时间连续偏慢降背店，平稳不误降，富余且过冷却后试探回升 ---------- */
+test('自适应画质：连续掉帧自动降分辨率（下限 1:1），平稳不误降，富余后试探回升', () => {
+  const H = makeDom({ main: { w: 1024, h: 768 }, dpr: 2 }); boot(H);
+  const w0 = H.cv.width;
+  assert.ok(w0 > 0, '初始背店应已建立');
+  H.drive(40);                                     // 预热 + 平稳 60fps：不应降档
+  assert.equal(H.cv.width, w0, '平稳 60fps 不应降档');
+  for (let i = 0; i < 160; i++) H.drive(1, 40);    // 连续 40ms 大帧（≈25fps）：一个决策窗口后应降档
+  assert.ok(H.cv.width < w0, '连续掉帧后应自动降分辨率');
+  for (let i = 0; i < 180; i++) H.drive(1, 40);    // 继续掉帧：继续降，但不会低于 1 设备像素 = 1 CSS 像素
+  const r = H.cv.getBoundingClientRect();
+  assert.ok(H.cv.width >= Math.round(r.width) - 1, `分辨率不应低于 1:1（${H.cv.width} vs ${r.width}）`);
+  // 帧时间富余 + 越过试升冷却 → 升回一档
+  H.sb.__t += 20000; H.drive(1, 40);
+  H.drive(260, 6);                                 // 6ms 富余帧
+  const r2 = H.cv.getBoundingClientRect();
+  assert.ok(H.cv.width > Math.round(r2.width) + 1, `富余帧 + 冷却结束后应试探升回（${H.cv.width} vs 1:1=${r2.width}）`);
 });
