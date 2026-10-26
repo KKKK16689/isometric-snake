@@ -2184,6 +2184,21 @@ window.Snake = window.Snake || {};
     const sh = shakeT ? Math.max(0, 1 - (t - shakeT) / 220) : 0;   // 撞击震屏：背景与结算文字不参与，只晃世界层
     if (sh > 0) { ctx.save(); ctx.translate((K.fr(t * 1.31) - .5) * 8 * sh, (K.fr(t * 1.73 + 7) - .5) * 6 * sh); }
     drawBoard();
+    /* 周期闸门的能量帘：关=满高发亮，开=收进地面。用 core 的同一个时钟（S.now），保证「看见的」与「判定的」一致。 */
+    if (S.T && Snake.gates) {
+      const gn = S.now || t;
+      for (const g of Snake.gates.list()) {
+        const gx = PX(g.x, g.y), gy = PY(g.x, g.y) + K.HH;
+        if (gx < -K.TW || gx > S.W + K.TW || gy < -K.TH * 4 || gy > S.H + K.TH * 4) continue;
+        if (!S.T.layerAt(g.x, g.y, 0)) continue;
+        const pd = g.period || 4000, u = ((gn + (g.phase || 0)) % pd) / (pd / 2);   // u<1 开、u≥1 关
+        const open = u < 1, k2 = open ? u : 2 - u;                                  // k2：开→1…0，关→0…1
+        const hh = open ? K.HH * 3.2 * k2 * .16 : K.HH * 3.2;                       // 开启时几乎收平，关闭时满高
+        ctx.globalAlpha = open ? .16 + .12 * k2 : .5;
+        poly([[gx - K.HW * .72, gy - hh], [gx, gy - hh - K.HH * .5], [gx + K.HW * .72, gy - hh], [gx + K.HW * .72, gy], [gx, gy + K.HH * .5], [gx - K.HW * .72, gy]], '#7FD4FF');
+        ctx.globalAlpha = 1;
+      }
+    }
     ctx.globalCompositeOperation = 'lighter';   // 加法通道一次合批：地板反光/光轨/鳞片光晕/辉光精灵，整通道只切一次 composite
     S.pl.forEach((p, i) => { // 蛇映在地板的光（随插值）
       const c = K.rgba(K.SK[S.skin[i]].body[1], .16), arr = PTS[i];
