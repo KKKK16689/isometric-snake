@@ -2522,6 +2522,21 @@ window.Snake = window.Snake || {};
     /* 「抢不过就别迎头去凑」：候选格距离 fd ⇒ 我们走上它之后是 fd+1；对手 ≤ fd+1 就是它先到或同到。
        注意不能拿自己的头去查距离场——蛇头属于被占格，不在场里（第一版就栽在这，恒判「抢不过」）。 */
     const loseRace = !!(S.T && lv.contest) && ofd < 1e9;
+    /* 迎头相撞规避（只在地形模式启用）：从对手蛇头做 4 步 BFS ⇒ 它几步能到的格子 */
+    const ohd = new Map();
+    if (S.T && oh) {
+      const q2 = [[oh.x, oh.y, oh.L, 0]];
+      ohd.set(key(oh.x, oh.y, oh.L), 0);
+      for (let qi = 0; qi < q2.length; qi++) {
+        const qx = q2[qi][0], qy = q2[qi][1], qL = q2[qi][2], qd = q2[qi][3];
+        if (qd >= 4) continue;
+        for (const n of nbrs(qx, qy, qL)) {
+          const kk = key(n.x, n.y, n.L);
+          if (ohd.has(kk) || blocked.has(kk)) continue;
+          ohd.set(kk, qd + 1); q2.push([n.x, n.y, n.L, qd + 1]);
+        }
+      }
+    }
     /* 「困难」档的堵截：把「对手下一步的活动空间」当成收益——同一套 BFS 结果就能算，
        不需要多跑一次搜索：对手头部的每个可走邻居若被我们占掉，就从它的选项里消失。 */
     const oppSpace = extra => {
@@ -2537,14 +2552,18 @@ window.Snake = window.Snake || {};
       const area = size.get(comp.get(k)) || 0, fd = dist.has(k) ? dist.get(k) : 1e9;
       const roomy = area >= p.body.length + 3; // 绝不钻进逃不出的口袋
       const blk = (lv.block && oh && Math.abs(x - oh.x) + Math.abs(y - oh.y) <= 6) ? Math.min(oppSpace(k), 200) * .5 : 0;
-      return { d: [x - h.x, y - h.y], fd, area, score: (roomy ? 1000 - Math.min(fd, 500) : area) - (risky.has(k) ? pen : 0) - (loseRace && fd + 2 > ofd && fd <= 6 ? 140 : 0) + blk };
+      const ot = ohd.get(k);                                    // 对手到这一格的步数（undefined＝4 步内到不了）
+      const clash = ot === undefined ? 0 : (ot <= 1 ? 400 : ot === 2 ? 120 : 0);
+      const tight = Math.max(0, p.body.length + 6 - area) * 6;  // 口袋惩罚分级：越紧扣越多
+      return { d: [x - h.x, y - h.y], fd, area, score: (roomy ? 1000 - Math.min(fd, 500) : area) - (risky.has(k) ? Math.max(160, pen) : 0) - (loseRace && fd + 2 > ofd && fd <= 6 ? 140 : 0) - clash - tight + blk };
     }).filter(Boolean);
     if (!moves.length) return;
     if (moves.every(m => m.area < p.body.length + 3)) {   // 残局：无处宽松 → 追自己的尾格盘绕求生（地形下用曼哈顿近似）
       const tail = p.body[p.body.length - 1];
       moves.forEach(m => {
         const x = h.x + m.d[0], y = h.y + m.d[1];
-        m.score = 1000 - Math.min(Math.abs(x - tail.x) + Math.abs(y - tail.y), 500) + m.area - (risky.has(key(x, y, h.L)) ? pen : 0);
+        const ot2 = ohd.get(key(x, y, h.L));
+        m.score = 1000 - Math.min(Math.abs(x - tail.x) + Math.abs(y - tail.y), 500) + m.area - (risky.has(key(x, y, h.L)) ? Math.max(160, pen) : 0) - (ot2 !== undefined && ot2 <= 1 ? 400 : 0);
       });
     }
     let pick = moves.sort((a, b) => b.score - a.score)[0];
