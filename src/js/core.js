@@ -126,6 +126,12 @@ window.Snake = window.Snake || {};
   const solid = (x, y) => S.T ? !S.T.hasWalk(x, y) : (x < 0 || y < 0 || x >= S.N || y >= S.N);
   /* 周期闸门（太空站）：层图保持静态，只在这里按相位判「此刻算不算墙」；
      安全闸规则（用户拍板 ①）：相位上该关，但只要还有蛇身/蛇头在门里，就继续开着。 */
+  const beltAt = (x, y) => {   // 运输带方向：来自关卡数据 belts（带面层 kind='belt'，方向只在这里给出）
+    const lv = (Snake.levelById && Snake.levelById(S.levelId)) || (Snake.LEVELS || []).find(l => l.id === S.levelId);
+    const bs = (lv && lv.belts) || [];
+    for (const b of bs) if (b.x === x && b.y === y) return b;
+    return null;
+  };
   const gateList = () => { const lv = (Snake.levelById && Snake.levelById(S.levelId)) || (Snake.LEVELS || []).find(l => l.id === S.levelId); return (lv && lv.gates) || []; };
   const gateOpen = g => { const pd = g.period || 4000; return ((S.now + (g.phase || 0)) % pd) < pd / 2; };
   const gateBlocked = (x, y) => {
@@ -316,6 +322,19 @@ window.Snake = window.Snake || {};
       const nx = h0.x + p.dir[0], ny = h0.y + p.dir[1], pk = S.T.pick(nx, ny, L0);   // §3.3：按层选落点
       if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
       if (gateBlocked(nx, ny)) return { x: nx, y: ny, L: L0, bad: true };   // 闸门此刻是关的 ⇒ 按墙处理（冰面/闸门互斥，顺序无所谓）
+      if (pk.layer && pk.layer.kind === 'belt') {              // 运输带：载着蛇走（拍板 ②）
+        const b = beltAt(nx, ny);
+        if (b) {
+          let cx2 = nx, cy2 = ny;
+          for (let n2 = 0; n2 < 12; n2++) {
+            const mx = cx2 + b.dx, my = cy2 + b.dy, mp = S.T.pick(mx, my, L0);
+            if (!mp || gateBlocked(mx, my)) return { x: mx, y: my, L: L0, bad: true };   // 被带进墙/水/悬崖/关门 ⇒ 判负
+            cx2 = mx; cy2 = my;
+            if (!(mp.layer && mp.layer.kind === 'belt')) break;                          // 走出带面 ⇒ 停在这一格
+          }
+          return { x: cx2, y: cy2, L: L0, bad: false };
+        }
+      }
       if (pk.layer && pk.layer.kind === 'ice') {                    // 冰面：一步可能滑多格（§5 的 transition 表）
         if (p.ai) return { x: nx, y: ny, L: L0, bad: true };         // §5 门控：AI 会用滑行表之前一律不踩冰
         const slideFn = S.T.slide || (Snake.Terrain && Snake.Terrain.slide);   // 滑行表是 terrain 的模块级导出（不在层图对象上）

@@ -585,6 +585,22 @@ window.Snake = window.Snake || {};
       glowAt(qx, qy + K.HH - 4, 16 + 12 * k2, '#7FD4FF', .38);
     }
     paintStationGlow(t);   // 太空站地标：反应堆呼吸核心 + 闸门格警示条（画在实体之后，不会被墙挡掉）
+    paintBelts(t);         // 运输带：流动箭头（谁在动、往哪动，一眼看得出）
+
+  /* ---------- 运输带流动箭头（只画关卡数据里声明了 belts 的图） ---------- */
+  function paintBelts(t) {
+    if (!S.T || !Snake.levelById) return;
+    const lv = Snake.levelById(S.levelId), bs = (lv && lv.belts) || [];
+    if (!bs.length) return;
+    for (const b of bs) {
+      const px = PX(b.x, b.y), py = PY(b.x, b.y) + K.HH;
+      if (px < -K.TW || px > S.W + K.TW || py < -K.TH * 4 || py > S.H + K.TH * 4) continue;
+      const a = .16 + .36 * (((t / 300) + (b.x + b.y) * .17) % 1);                      // 逐格错相 ⇒ 看起来在流动
+      diamond(px, py, K.HW * .44, K.HH * .44, K.rgba('#F2B33D', a.toFixed(2)));
+      const ox = (b.dx - b.dy) * K.HW * .46, oy = (b.dx + b.dy) * K.HH * .46;           // 等距方向映射
+      diamond(px + ox, py + oy, K.HW * .2, K.HH * .2, K.rgba('#FFE7A8', Math.min(1, a * 1.4).toFixed(2)));
+    }
+  }
 
   /* ---------- 太空站地标（只对 biome==='station' 生效；加法通道内，调用方已保证 composite=lighter） ---------- */
   function paintStationGlow(t) {
