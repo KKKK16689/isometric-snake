@@ -300,6 +300,19 @@ window.Snake = window.Snake || {};
   }
   /* 是否阻挡：有层图按层图（Stage 1 只看最高可走层 ⇒ 墙/水挡、高台与桥面可走），否则按棋盘边界 */
   const solid = (x, y) => S.T ? !S.T.hasWalk(x, y) : (x < 0 || y < 0 || x >= S.N || y >= S.N);
+  /* 周期闸门（太空站）：层图保持静态，只在这里按相位判「此刻算不算墙」；
+     安全闸规则（用户拍板 ①）：相位上该关，但只要还有蛇身/蛇头在门里，就继续开着。 */
+  const gateList = () => { const lv = (Snake.levelById && Snake.levelById(S.levelId)) || (Snake.LEVELS || []).find(l => l.id === S.levelId); return (lv && lv.gates) || []; };
+  const gateOpen = g => { const pd = g.period || 4000; return ((S.now + (g.phase || 0)) % pd) < pd / 2; };
+  const gateBlocked = (x, y) => {
+    for (const g of gateList()) {
+      if (g.x !== x || g.y !== y || gateOpen(g)) continue;
+      for (const p of S.pl) for (const b of p.body) if (b.x === x && b.y === y) return false;   // 门里有人 ⇒ 先别关
+      return true;
+    }
+    return false;
+  };
+  Snake.gates = { list: gateList, open: gateOpen, blocked: gateBlocked };
   /* 站在传送门层上时的出口（规格 §3.4）：传送门是层图上的双向边，踩上去下一步送到对端，路径允许不连续 */
   function portalEdge(x, y, L) {
     const l = S.T && S.T.layerAt(x, y, L);
@@ -478,6 +491,7 @@ window.Snake = window.Snake || {};
       p.portCool = false;                                         // 刚从传送门出来那一拍不许再传：否则会在两端来回弹、身体叠在自己头上把自己撞死（用户反馈「一到传送门就死」）
       const nx = h0.x + p.dir[0], ny = h0.y + p.dir[1], pk = S.T.pick(nx, ny, L0);   // §3.3：按层选落点
       if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
+      if (gateBlocked(nx, ny)) return { x: nx, y: ny, L: L0, bad: true };   // 闸门此刻是关的 ⇒ 按墙处理（冰面/闸门互斥，顺序无所谓）
       if (pk.layer && pk.layer.kind === 'ice') {                    // 冰面：一步可能滑多格（§5 的 transition 表）
         if (p.ai) return { x: nx, y: ny, L: L0, bad: true };         // §5 门控：AI 会用滑行表之前一律不踩冰
         const slideFn = S.T.slide || (Snake.Terrain && Snake.Terrain.slide);   // 滑行表是 terrain 的模块级导出（不在层图对象上）
@@ -979,7 +993,8 @@ window.Snake = window.Snake || {};
   /* ---------- ASCII → 层 ---------- */
   function layersOf(ch, x, y) {
     if (ch === 'L') return [{ h: 0, walkable: false, kind: 'lava' }];   // 熔岩：不可走，只做硬阻挡（暂停/重开等规则不受影响）
-    if (ch === 'I') return [{ h: 0, walkable: true, kind: 'ice' }];   // 冰面：可走，但一步会滑（滑行规则见 slide / core 的落地计算）
+    if (ch === 'I') return [{ h: 0, walkable: true, kind: 'ice' }];
+    if (ch === 'G') return [{ h: 0, walkable: true, kind: 'gate' }];   // 周期闸门：层图静态，关/开由 core 按相位判定   // 冰面：可走，但一步会滑（滑行规则见 slide / core 的落地计算）
     switch (ch) {
       case '.': case '@': case '$': return [{ h: 0, kind: 'ground', walkable: true, portal: null }];
       case '1': return [{ h: 1, kind: 'ground', walkable: true, portal: null }];
@@ -1868,6 +1883,15 @@ window.Snake = window.Snake || {};
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText((portalL.portal || '?').toUpperCase(), sx, sy);                     // 字母：同字母＝一对（规格 §3.4）
         ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+        continue;
+      }
+      if (ls && ls.some(l => l.kind === 'gate')) {   // 周期闸门：地面轨道 + 两根立柱（静态层；能量帘由动态层按相位画）
+        diamond(sx, sy, K.HW, K.HH, '#101A26');
+        diamond(sx, sy, K.HW * .9, K.HH * .9, '#1B2836');
+        ctx.strokeStyle = 'rgba(127,212,255,.5)'; ctx.lineWidth = lw;
+        ctx.beginPath(); ctx.moveTo(sx - K.HW * .8, sy + K.HH * .12); ctx.lineTo(sx, sy - K.HH * .66); ctx.lineTo(sx + K.HW * .8, sy + K.HH * .12); ctx.stroke();
+        diamond(sx - K.HW * .74, sy - K.HH * 1.05, K.HW * .16, K.HH * .3, '#C9D6E4');
+        diamond(sx + K.HW * .74, sy - K.HH * 1.05, K.HW * .16, K.HH * .3, '#C9D6E4');
         continue;
       }
       if (ls && ls.some(l => l.kind === 'ice')) {   // 冰面：一眼可辨——冷白镜面 + 斜高光 + 裂纹（静态层一次画好，零逐帧成本）
