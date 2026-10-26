@@ -302,6 +302,12 @@ window.Snake = window.Snake || {};
   const solid = (x, y) => S.T ? !S.T.hasWalk(x, y) : (x < 0 || y < 0 || x >= S.N || y >= S.N);
   /* 周期闸门（太空站）：层图保持静态，只在这里按相位判「此刻算不算墙」；
      安全闸规则（用户拍板 ①）：相位上该关，但只要还有蛇身/蛇头在门里，就继续开着。 */
+  const beltAt = (x, y) => {   // 运输带方向：来自关卡数据 belts（带面层 kind='belt'，方向只在这里给出）
+    const lv = (Snake.levelById && Snake.levelById(S.levelId)) || (Snake.LEVELS || []).find(l => l.id === S.levelId);
+    const bs = (lv && lv.belts) || [];
+    for (const b of bs) if (b.x === x && b.y === y) return b;
+    return null;
+  };
   const gateList = () => { const lv = (Snake.levelById && Snake.levelById(S.levelId)) || (Snake.LEVELS || []).find(l => l.id === S.levelId); return (lv && lv.gates) || []; };
   const gateOpen = g => { const pd = g.period || 4000; return ((S.now + (g.phase || 0)) % pd) < pd / 2; };
   const gateBlocked = (x, y) => {
@@ -492,6 +498,19 @@ window.Snake = window.Snake || {};
       const nx = h0.x + p.dir[0], ny = h0.y + p.dir[1], pk = S.T.pick(nx, ny, L0);   // §3.3：按层选落点
       if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
       if (gateBlocked(nx, ny)) return { x: nx, y: ny, L: L0, bad: true };   // 闸门此刻是关的 ⇒ 按墙处理（冰面/闸门互斥，顺序无所谓）
+      if (pk.layer && pk.layer.kind === 'belt') {              // 运输带：载着蛇走（拍板 ②）
+        const b = beltAt(nx, ny);
+        if (b) {
+          let cx2 = nx, cy2 = ny;
+          for (let n2 = 0; n2 < 12; n2++) {
+            const mx = cx2 + b.dx, my = cy2 + b.dy, mp = S.T.pick(mx, my, L0);
+            if (!mp || gateBlocked(mx, my)) return { x: mx, y: my, L: L0, bad: true };   // 被带进墙/水/悬崖/关门 ⇒ 判负
+            cx2 = mx; cy2 = my;
+            if (!(mp.layer && mp.layer.kind === 'belt')) break;                          // 走出带面 ⇒ 停在这一格
+          }
+          return { x: cx2, y: cy2, L: L0, bad: false };
+        }
+      }
       if (pk.layer && pk.layer.kind === 'ice') {                    // 冰面：一步可能滑多格（§5 的 transition 表）
         if (p.ai) return { x: nx, y: ny, L: L0, bad: true };         // §5 门控：AI 会用滑行表之前一律不踩冰
         const slideFn = S.T.slide || (Snake.Terrain && Snake.Terrain.slide);   // 滑行表是 terrain 的模块级导出（不在层图对象上）
@@ -1030,7 +1049,8 @@ window.Snake = window.Snake || {};
   function layersOf(ch, x, y) {
     if (ch === 'L') return [{ h: 0, walkable: false, kind: 'lava' }];   // 熔岩：不可走，只做硬阻挡（暂停/重开等规则不受影响）
     if (ch === 'I') return [{ h: 0, walkable: true, kind: 'ice' }];
-    if (ch === 'G') return [{ h: 0, walkable: true, kind: 'gate' }];   // 周期闸门：层图静态，关/开由 core 按相位判定   // 冰面：可走，但一步会滑（滑行规则见 slide / core 的落地计算）
+    if (ch === 'G') return [{ h: 0, walkable: true, kind: 'gate' }];
+    if (ch === 'T') return [{ h: 0, walkable: true, kind: 'belt' }];   // 运输带带面：可走性静态，载运由 core 按关卡数据执行   // 周期闸门：层图静态，关/开由 core 按相位判定   // 冰面：可走，但一步会滑（滑行规则见 slide / core 的落地计算）
     switch (ch) {
       case '.': case '@': case '$': return [{ h: 0, kind: 'ground', walkable: true, portal: null }];
       case '1': return [{ h: 1, kind: 'ground', walkable: true, portal: null }];
@@ -2258,6 +2278,22 @@ window.Snake = window.Snake || {};
       glowAt(qx, qy + K.HH - 4, 16 + 12 * k2, '#7FD4FF', .38);
     }
     paintStationGlow(t);   // 太空站地标：反应堆呼吸核心 + 闸门格警示条（画在实体之后，不会被墙挡掉）
+    paintBelts(t);         // 运输带：流动箭头（谁在动、往哪动，一眼看得出）
+
+  /* ---------- 运输带流动箭头（只画关卡数据里声明了 belts 的图） ---------- */
+  function paintBelts(t) {
+    if (!S.T || !Snake.levelById) return;
+    const lv = Snake.levelById(S.levelId), bs = (lv && lv.belts) || [];
+    if (!bs.length) return;
+    for (const b of bs) {
+      const px = PX(b.x, b.y), py = PY(b.x, b.y) + K.HH;
+      if (px < -K.TW || px > S.W + K.TW || py < -K.TH * 4 || py > S.H + K.TH * 4) continue;
+      const a = .16 + .36 * (((t / 300) + (b.x + b.y) * .17) % 1);                      // 逐格错相 ⇒ 看起来在流动
+      diamond(px, py, K.HW * .44, K.HH * .44, K.rgba('#F2B33D', a.toFixed(2)));
+      const ox = (b.dx - b.dy) * K.HW * .46, oy = (b.dx + b.dy) * K.HH * .46;           // 等距方向映射
+      diamond(px + ox, py + oy, K.HW * .2, K.HH * .2, K.rgba('#FFE7A8', Math.min(1, a * 1.4).toFixed(2)));
+    }
+  }
 
   /* ---------- 太空站地标（只对 biome==='station' 生效；加法通道内，调用方已保证 composite=lighter） ---------- */
   function paintStationGlow(t) {
