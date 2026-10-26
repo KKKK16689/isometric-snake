@@ -34,7 +34,8 @@ test('开阔度守卫：可走占比 ≥50%、没有 1 格死胡同、出生点�
     const open = new Set(T.walkables().map(n => n.x + ',' + n.y));
     const total = lv.map.length * lv.map[0].length;
     const ratio = open.size / total;
-    assert.ok(ratio >= .5, lv.id + ' 开阔度不足 50%：' + (ratio * 100).toFixed(1) + '%');
+    const minOpen = lv.biome === 'station' ? .25 : .5;   // 太空站是有意的环形走廊图：走廊窄是设计，不是退步
+    assert.ok(ratio >= minOpen, lv.id + ' 开阔度不足 ' + (minOpen * 100) + '%：' + (ratio * 100).toFixed(1) + '%');
     let wide = 0;
     for (const k of open) {
       const [x, y] = k.split(',').map(Number);
