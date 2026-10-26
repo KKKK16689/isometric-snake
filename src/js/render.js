@@ -19,7 +19,7 @@ window.Snake = window.Snake || {};
      只有在 dpr=1 的屏幕上、且漏帧率超过 35% 时，才允许再降到 0.75 倍 CSS（略软换流畅，回升即复原）。
      几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
-  const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: .75 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
+  const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: 1 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
   const BUILD = 'stage4.1';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
   const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
@@ -527,7 +527,7 @@ window.Snake = window.Snake || {};
           const ratio = qDrop / qWin;
           if (ratio >= Q.dropHi && qScale > Q.min && t > qHold) {          // 漏帧多：降一档分辨率
             qScale = Math.max(Q.min, qScale * (ratio > .35 ? .6 : Q.step));   // 严重掉帧直接大步降，尽快进预算
-            if (ratio > .35) qFloor = Q.softMin;                              // 连 1:1 都救不回来时，允许略软一点换流畅
+            if (ratio > .35) qFloor = Q.softMin;                              // 保清晰度：softMin=1 ⇒ 这一行不再降分辨率，只保留「严重掉帧时缩短冷却」的行为
             qHold = t + (ratio > .35 ? 800 : 2000);                           // 严重掉帧时缩短冷却，尽快进预算
             qProbe = t + Q.retryMs; qDirty = true;                            // 真正重建放到下一帧开头，避免半帧换尺寸
           } else if (ratio <= Q.dropLo && qScale < 1 && t > qProbe) {      // 几乎不漏帧且过了冷却：试探升回一档
