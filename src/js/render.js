@@ -608,11 +608,11 @@ window.Snake = window.Snake || {};
     const lv = Snake.levelById(S.levelId);
     if (!lv || lv.biome !== 'station') return;
     const pulse = .5 + .5 * Math.sin(t / 420);
-    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
-      const x = 15 + dx, y = 15 + dy;                      // station-32 反应堆巨块中心在 (15.5, 15.5)
-      const ls = S.T.layerAt(x, y, 0); if (!ls || ls.kind !== 'wall') continue;
-      const d = Math.abs(dx + .5) + Math.abs(dy + .5), k = Math.max(0, 1 - d / 3.6);
-      const px = PX(x, y), py = PY(x, y) + K.HH - 3 * BLK;  // 巨块高 3 层 ⇒ 顶面抬 3*BLK
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const x = 15 + dx, y = 15 + dy;                      // station-32 中央反应堆（低台）中心在 (15.5, 15.5)
+      const lw = S.T.topWalk(x, y); if (!lw || !lw.h) continue;      // 只给抬高的台面加光：平地不画
+      const d = Math.abs(dx + .5) + Math.abs(dy + .5), k = Math.max(0, 1 - d / 4.6);
+      const px = PX(x, y), py = PY(x, y) + K.HH - lw.h * BLK;        // 按该格实际台高抬升（h1=9px、h2=18px）
       if (px < -K.TW || px > S.W + K.TW || py < -K.TH * 8 || py > S.H + K.TH * 4) continue;
       diamond(px, py, K.HW * .8, K.HH * .8, K.rgba('#7FD4FF', (.05 + .24 * k * (.55 + .45 * pulse)).toFixed(2)));
       if (k > .5) glowAt(px, py, 13 + 9 * k + 7 * pulse, '#BFF0FF', .16 + .22 * k);
