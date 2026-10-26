@@ -346,6 +346,8 @@ window.Snake = window.Snake || {};
       }
       else p.tailFrom = p.body.pop();
       p.grew = eat[i] >= 0; p.moveT = S.now > 0 ? S.now - K.TUNE.moveLead : now; p.moveTGame = now; p.moveP = p.sprint ? tickMs() : tickMs() * 2;   // 冲刺每 tick 动，平时隔 tick；moveT 用渲染时钟并提前 moveLead 起势，moveTGame 留作 ?interp=legacy 对比
+      const slz = hs[i] && hs[i].slide;
+      if (slz) for (const s of slz) { S.rec.push(s.x, s.y); S.myMoves++; }   // 冰面滑行：途经格逐格进录像，回放才不会少一截
       if (i === 0) { S.rec.push(hs[i].x, hs[i].y); S.myMoves++; }   // 幽灵录制：p0 每步头格
     });
     if (S.gold) {   // 金苹果拾取：+3 分 +30 能量，不增长、不影响连击（两蛇同 tick 踩上则先手判给 p0）
