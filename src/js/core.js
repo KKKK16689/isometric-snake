@@ -307,7 +307,7 @@ window.Snake = window.Snake || {};
         const slideFn = S.T.slide || (Snake.Terrain && Snake.Terrain.slide);   // 滑行表是 terrain 的模块级导出（不在层图对象上）
         const sl = slideFn(S.T, h0.x, h0.y, L0, [p.dir[0], p.dir[1]], 64);
         const last = sl.path[sl.path.length - 1];
-        if (last) return { x: last.x, y: last.y, L: last.L, bad: false, slide: sl.path };
+        if (last) { bus.emit('slide', { x: last.x, y: last.y, L: last.L, i }); return { x: last.x, y: last.y, L: last.L, bad: false, slide: sl.path }; }
       }
       return { x: nx, y: ny, L: pk.h };
     });

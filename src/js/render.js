@@ -248,6 +248,15 @@ window.Snake = window.Snake || {};
         ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
         continue;
       }
+      if (ls && ls.some(l => l.kind === 'ice')) {   // 冰面：一眼可辨——冷白镜面 + 斜高光 + 裂纹（静态层一次画好，零逐帧成本）
+        diamond(sx, sy, K.HW, K.HH, '#0E2A38');
+        diamond(sx, sy, K.HW * .95, K.HH * .95, 'rgba(198,234,248,.95)');
+        ctx.strokeStyle = 'rgba(84,140,170,.6)'; ctx.lineWidth = lw;
+        ctx.beginPath(); ctx.moveTo(sx - K.HW * .58, sy + K.HH * .30); ctx.lineTo(sx - K.HW * .10, sy - K.HH * .18); ctx.lineTo(sx + K.HW * .22, sy - K.HH * .02); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,.85)';
+        ctx.beginPath(); ctx.moveTo(sx - K.HW * .30, sy - K.HH * .46); ctx.lineTo(sx + K.HW * .34, sy + K.HH * .10); ctx.stroke();
+        continue;
+      }
       const water = !!ls && ls.some(l => l.kind === 'water') && !ls.some(l => l.kind === 'deck');
       diamond(sx, sy, K.HW, K.HH, water ? '#16324F' : ((x + y) % 2 ? pal.floorTop : pal.floorRight));
       ctx.strokeStyle = water ? 'rgba(120,190,255,.18)' : pal.grid; ctx.lineWidth = lw; // 网格线随主题
@@ -270,7 +279,8 @@ window.Snake = window.Snake || {};
     grey: { top: '#8A94A6', left: '#5A6473', right: '#3B4252', strip: null },        // 灰模：测试图与既有两张开阔图
     neon: { top: '#4B5A80', left: '#2C3757', right: '#1B2340', strip: '#5AC8FF' },    // 霓虹都市：偏冷的深蓝楼体 + 青色灯带
     ruins: { top: '#7C8C63', left: '#4E5A3C', right: '#333C28', strip: null },   // 森林遗迹：苔绿石台（先不画灯带，晚点看效果再说）
-    lava: { top: '#6A5A52', left: '#463832', right: '#2A211D', strip: '#FF8A3D' }     // 火山口：玄武岩 + 岩缝里透出的橙光
+    lava: { top: '#6A5A52', left: '#463832', right: '#2A211D', strip: '#FF8A3D' },     // 火山口：玄武岩 + 岩缝里透出的橙光
+    ice: { top: '#BFE3F2', left: '#7FA8BE', right: '#54788C', strip: '#FFFFFF' }   // 冰原：冷白台面 + 白色高光条
   };
   const TERR_C = ['#8A94A6', '#5A6473', '#3B4252']; // 顶 / 左 / 右（由 syncBiome 按关卡 biome 覆写）
   let STRIP = null;                                 // 楼面灯带色（biome 提供；灰模为 null ⇒ 不画）

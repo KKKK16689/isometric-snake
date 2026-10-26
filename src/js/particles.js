@@ -31,6 +31,10 @@ window.Snake = window.Snake || {};
     if (e.gold) { scatter(cx, cy, S.lowFx ? 10 : 22, ['#F2B33D', '#F7D070', '#BA7517', '#ffffff'], 90, 80); return; }
     scatter(cx, cy, S.lowFx ? 6 : 12, e.pk ? ['#ffffff', '#cbd5e1', '#94a3b8'] : [c.food, K.shades(c.food)[0], c.spark], 60, 55);
   });
+  bus.on('slide', e => { // 冰面滑行：落点一圈冰屑 + 拖尾感（让人明白「是滑，不是被传走」）
+    const [cx, cy] = at(e.x, e.y, e.L);
+    scatter(cx, cy, S.lowFx ? 6 : 14, ['#DCEFFA', '#9CC7DC', '#ffffff'], 34, 70);
+  });
   bus.on('goldSpawn', e => { // 金苹果登场微光
     const [cx, cy] = at(e.x, e.y, e.L);
     scatter(cx, cy, S.lowFx ? 3 : 7, ['#F2B33D', '#F7D070'], 30, 35);
