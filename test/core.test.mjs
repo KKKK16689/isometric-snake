@@ -591,35 +591,30 @@ test('冰面 transition：踩上冰面会继续同向滑，遇到非冰/墙/悬�
   assert.ok(T.hasWalk(d.x, d.y), '终点必须是可走格');
 });
 
-/* ---------- 冰面滑行（规则级）：踩上冰一步滑多格；AI 在会用滑行表之前不许踩冰（规格 §5） ---------- */
-test('冰面滑行：踩上冰一步滑多格；AI 门控不许踩冰', () => {
-  const rows = [
-    '###############',
-    '#.............#',
-    '#..III........#',
-    '#.III.........#',
-    '#...@III...$..#',
-    '#.............#',
-    '###############',
-  ];
+/* ---------- 冰面滑行（规则级）：踩上冰一步滑多格、途经食物照吃；AI 踩冰被 §5 门控拦下 ---------- */
+test('冰面滑行：踩上冰一步滑多格、途经食物照吃；AI 踩冰被门控拦下', () => {
   const sb = load('', false, true);
-  sb.Snake.LEVELS.push({ id: 'ice-move', name: '冰面测试', biome: 'ice', map: rows, foods: 1, spawns: [{ x: 4, y: 4, dir: 'downRight' }, { x: 11, y: 4, dir: 'upLeft' }], rulesetVersion: 1 });
-  sb.Snake.api.setTerrain(true, 'ice-move');
+  sb.Snake.api.setTerrain(true, 'ice-32');
   sb.Snake.api.reset();
   const S = sb.Snake.S, p = S.pl[0];
-  p.body = [{ x: 4, y: 4, L: 0 }, { x: 3, y: 4, L: 0 }, { x: 2, y: 4, L: 0 }];
-  p.dir = [1, 0]; p.queue.length = 0;
-  S.state = 'playing'; S.foods = [{ x: 1, y: 1, L: 0 }];      // 食物放远，避免干扰
+  assert.ok(S.T && S.T.w === 32, '应当载入 ice-32（32×32）');
+  assert.equal(S.T.layerAt(10, 16, 0).kind, 'ice', '冰湖 (10,16) 应当是冰层');
+  // ① 人类玩家：从 (9,16) 向右踩上冰 → 一路滑到 (21,16)（湖面 10..21，22 已是地面）
+  p.body = [{ x: 9, y: 16, L: 0 }, { x: 8, y: 16, L: 0 }, { x: 7, y: 16, L: 0 }];
+  p.dir = [1, 0]; p.queue.length = 0; p.ai = false; p.lives = 3;
+  S.state = 'playing';
+  S.foods = [{ x: 15, y: 16, L: 0 }];                 // 食物摆在滑行路径中段
+  const score0 = p.score;
   moveOnce(sb, p);
-  eq([p.body[0].x, p.body[0].y], 8, 4);                       // 4→5 踩上冰，一路滑过 5..7 停在 8
-  console.log('【冰面诊断】', JSON.stringify({ state: S.state, lives: p.lives, head: p.body[0], tickN: S.tickN, len: p.body.length, msg: S.msg }));
-  assert.notEqual(S.state, 'over', '正常滑行不该判负');
-
+  eq([p.body[0].x, p.body[0].y], 21, 16);
+  assert.equal(S.state, 'playing', '滑行不该判负');
+  assert.ok(p.score > score0, '滑行途经格上的食物应当被吃掉');
+  // ② AI 门控：同一位置标记为 AI ⇒ 踩冰按 bad 处理 ⇒ 判负（这一条以前是假绿）
   sb.Snake.api.reset();
   const p2 = S.pl[0];
-  p2.body = [{ x: 4, y: 4, L: 0 }, { x: 3, y: 4, L: 0 }, { x: 2, y: 4, L: 0 }];
+  p2.body = [{ x: 9, y: 16, L: 0 }, { x: 8, y: 16, L: 0 }, { x: 7, y: 16, L: 0 }];
   p2.dir = [1, 0]; p2.queue.length = 0; p2.ai = true;
   S.state = 'playing';
   moveOnce(sb, p2);
-  assert.notEqual(S.state, 'playing', 'AI 踩冰必须被 §5 门控拦下（视为 bad）');
+  assert.notEqual(S.state, 'playing', 'AI 踩冰必须被 §5 门控拦下');
 });

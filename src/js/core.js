@@ -302,6 +302,13 @@ window.Snake = window.Snake || {};
       p.portCool = false;                                         // 刚从传送门出来那一拍不许再传：否则会在两端来回弹、身体叠在自己头上把自己撞死（用户反馈「一到传送门就死」）
       const nx = h0.x + p.dir[0], ny = h0.y + p.dir[1], pk = S.T.pick(nx, ny, L0);   // §3.3：按层选落点
       if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
+      if (pk.layer && pk.layer.kind === 'ice') {                    // 冰面：一步可能滑多格（§5 的 transition 表）
+        if (p.ai) return { x: nx, y: ny, L: L0, bad: true };         // §5 门控：AI 会用滑行表之前一律不踩冰
+        const slideFn = S.T.slide || (Snake.Terrain && Snake.Terrain.slide);   // 滑行表是 terrain 的模块级导出（不在层图对象上）
+        const sl = slideFn(S.T, h0.x, h0.y, L0, [p.dir[0], p.dir[1]], 64);
+        const last = sl.path[sl.path.length - 1];
+        if (last) return { x: last.x, y: last.y, L: last.L, bad: false, slide: sl.path };
+      }
       return { x: nx, y: ny, L: pk.h };
     });
     const onFood = (x, y, L) => S.foods.findIndex(f => f.x === x && f.y === y && (f.L || 0) === (L || 0));
