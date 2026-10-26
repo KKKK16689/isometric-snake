@@ -584,6 +584,29 @@ window.Snake = window.Snake || {};
       diamond(qx, qy + K.HH, K.HW * (.95 + .3 * k2), K.HH * (.95 + .3 * k2), K.rgba('#7FD4FF', .10 + .12 * k2));
       glowAt(qx, qy + K.HH - 4, 16 + 12 * k2, '#7FD4FF', .38);
     }
+    paintStationGlow(t);   // 太空站地标：反应堆呼吸核心 + 闸门格警示条（画在实体之后，不会被墙挡掉）
+
+  /* ---------- 太空站地标（只对 biome==='station' 生效；加法通道内，调用方已保证 composite=lighter） ---------- */
+  function paintStationGlow(t) {
+    if (!S.T || !Snake.levelById) return;
+    const lv = Snake.levelById(S.levelId);
+    if (!lv || lv.biome !== 'station') return;
+    const pulse = .5 + .5 * Math.sin(t / 420);
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const x = 15 + dx, y = 15 + dy;                      // station-32 反应堆巨块中心在 (15.5, 15.5)
+      const ls = S.T.layerAt(x, y, 0); if (!ls || ls.kind !== 'wall') continue;
+      const d = Math.abs(dx + .5) + Math.abs(dy + .5), k = Math.max(0, 1 - d / 3.6);
+      const px = PX(x, y), py = PY(x, y) + K.HH - 3 * BLK;  // 巨块高 3 层 ⇒ 顶面抬 3*BLK
+      if (px < -K.TW || px > S.W + K.TW || py < -K.TH * 8 || py > S.H + K.TH * 4) continue;
+      diamond(px, py, K.HW * .8, K.HH * .8, K.rgba('#7FD4FF', (.05 + .24 * k * (.55 + .45 * pulse)).toFixed(2)));
+      if (k > .5) glowAt(px, py, 13 + 9 * k + 7 * pulse, '#BFF0FF', .16 + .22 * k);
+    }
+    for (const g of (Snake.gates ? Snake.gates.list() : [])) {   // 闸门格地面警示条
+      const gx = PX(g.x, g.y), gy = PY(g.x, g.y) + K.HH;
+      if (gx < -K.TW || gx > S.W + K.TW || gy < -K.TH * 4 || gy > S.H + K.TH * 4) continue;
+      for (let i = -1; i <= 1; i++) diamond(gx + i * K.HW * .3, gy + i * K.HH * .3, K.HW * .17, K.HH * .17, K.rgba('#F2B33D', .5));
+    }
+  }
     ctx.globalCompositeOperation = 'source-over';
     /* 幽灵回放：半透明灰白蛇，按当前步数逐格推进（数据 = 破纪录局存档的 p0 路径） */
     if (S.ghostOn && S.ghost && S.pl[0] && S.state !== 'over') {
