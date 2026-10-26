@@ -92,7 +92,12 @@ window.Snake = window.Snake || {};
       if (extra) blocked.delete(extra);
       return sum;
     };
-    const moves = nbrs(h.x, h.y, h.L).filter(n => !(n.x - h.x + p.dir[0] === 0 && n.y - h.y + p.dir[1] === 0)).map(n => {
+    const moves = nbrs(h.x, h.y, h.L).filter(n => {
+      if (n.x - h.x + p.dir[0] === 0 && n.y - h.y + p.dir[1] === 0) return false;   // 不回头
+      if (!S.T) return true;                                                       // 经典模式：逐字保持 2.0 行为
+      const nl = S.T.layerAt(n.x, n.y, n.L);                                       // 地形模式：带子/闸门/冰面的落点不是相邻格
+      return !nl || (nl.kind !== 'belt' && nl.kind !== 'gate' && nl.kind !== 'ice');   // ⇒ 规格 §5：AI 学会用 transition 之前不走
+    }).map(n => {
       const x = n.x, y = n.y, L = n.L || 0, k = key(x, y, L);
       if (!free(x, y, L)) return null;
       const area = size.get(comp.get(k)) || 0, fd = dist.has(k) ? dist.get(k) : 1e9;
