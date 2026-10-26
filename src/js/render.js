@@ -248,6 +248,15 @@ window.Snake = window.Snake || {};
         ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
         continue;
       }
+      if (ls && ls.some(l => l.kind === 'gate')) {   // 周期闸门：地面轨道 + 两根立柱（静态层；能量帘由动态层按相位画）
+        diamond(sx, sy, K.HW, K.HH, '#101A26');
+        diamond(sx, sy, K.HW * .9, K.HH * .9, '#1B2836');
+        ctx.strokeStyle = 'rgba(127,212,255,.5)'; ctx.lineWidth = lw;
+        ctx.beginPath(); ctx.moveTo(sx - K.HW * .8, sy + K.HH * .12); ctx.lineTo(sx, sy - K.HH * .66); ctx.lineTo(sx + K.HW * .8, sy + K.HH * .12); ctx.stroke();
+        diamond(sx - K.HW * .74, sy - K.HH * 1.05, K.HW * .16, K.HH * .3, '#C9D6E4');
+        diamond(sx + K.HW * .74, sy - K.HH * 1.05, K.HW * .16, K.HH * .3, '#C9D6E4');
+        continue;
+      }
       if (ls && ls.some(l => l.kind === 'ice')) {   // 冰面：一眼可辨——冷白镜面 + 斜高光 + 裂纹（静态层一次画好，零逐帧成本）
         diamond(sx, sy, K.HW, K.HH, '#0E2A38');
         diamond(sx, sy, K.HW * .95, K.HH * .95, 'rgba(198,234,248,.95)');

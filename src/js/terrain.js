@@ -11,7 +11,8 @@ window.Snake = window.Snake || {};
   /* ---------- ASCII → 层 ---------- */
   function layersOf(ch, x, y) {
     if (ch === 'L') return [{ h: 0, walkable: false, kind: 'lava' }];   // 熔岩：不可走，只做硬阻挡（暂停/重开等规则不受影响）
-    if (ch === 'I') return [{ h: 0, walkable: true, kind: 'ice' }];   // 冰面：可走，但一步会滑（滑行规则见 slide / core 的落地计算）
+    if (ch === 'I') return [{ h: 0, walkable: true, kind: 'ice' }];
+    if (ch === 'G') return [{ h: 0, walkable: true, kind: 'gate' }];   // 周期闸门：层图静态，关/开由 core 按相位判定   // 冰面：可走，但一步会滑（滑行规则见 slide / core 的落地计算）
     switch (ch) {
       case '.': case '@': case '$': return [{ h: 0, kind: 'ground', walkable: true, portal: null }];
       case '1': return [{ h: 1, kind: 'ground', walkable: true, portal: null }];

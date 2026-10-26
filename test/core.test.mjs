@@ -618,3 +618,48 @@ test('冰面滑行：踩上冰一步滑多格、途经食物照吃；AI 踩冰�
   moveOnce(sb, p2);
   assert.notEqual(S.state, 'playing', 'AI 踩冰必须被 §5 门控拦下');
 });
+
+/* ---------- 周期闸门（太空站）：层图静态，运行时按相位判「此刻算不算墙」 ---------- */
+test('周期闸门：关闭态按墙判负；门里有蛇时保持开启（安全闸，用户拍板 ①）', () => {
+  const rows = [
+    '###########',
+    '#.........#',
+    '#..@..G$..#',   // P1(3,2) 朝右 / G 闸门(6,2) / P2(7,2) 朝左（出生点身后各留 2 格跑道）
+    '#.........#',
+    '###########',
+  ];
+  const sb = load('', false, true);
+  sb.Snake.LEVELS.push({ id: 'gate-t', name: '闸门夹具', biome: 'grey', map: rows, foods: 1,
+    spawns: [{ x: 3, y: 2, dir: 'downRight' }, { x: 7, y: 2, dir: 'upLeft' }], rulesetVersion: 1,
+    gates: [{ x: 6, y: 2, period: 1200, phase: 0 }] });
+  // 直接注入：byId 是加载期建的，push 进 LEVELS 的夹具关卡查不到，所以不走 setTerrain。
+  const lv = sb.Snake.LEVELS[sb.Snake.LEVELS.length - 1];
+  sb.Snake.S.T = sb.Snake.Terrain.build(lv);
+  sb.Snake.S.levelId = lv.id; sb.Snake.S.mode = 'expedition';
+  sb.Snake.S.MAP_N = sb.Snake.S.N = sb.Snake.S.T.w;
+  assert.equal(sb.Snake.gates.list().length, 1, '闸门查询要能通过 LEVELS 回退路径找到夹具关卡');
+  assert.equal(sb.Snake.gates.blocked(6, 2), true, '相位 0~599ms 是关闭态 ⇒ 此刻算墙');
+
+  sb.Snake.api.reset();                            // 注入层图后先建局：reset→newGame 会按 S.mode/S.T 摆好玩家
+  const S = sb.Snake.S, p = S.pl[0];
+  assert.ok(p, 'reset 后玩家必须存在');
+  p.body = [{ x: 5, y: 2, L: 0 }, { x: 4, y: 2, L: 0 }, { x: 3, y: 2, L: 0 }]; p.dir = [1, 0]; p.queue.length = 0;
+  sb.Snake.api.start();                            // 必须先真的开局，否则 state='ready' 根本不会走
+  sb.__t = 700; S.now = 700; S.last = 700;          // 关闭相位 [600,1200)
+  moveOnce(sb, S.pl[0]);                              // 非冲刺蛇隔 tick 才动：必须等到真正移动的那一拍
+  assert.notEqual(S.state, 'playing', '关闭态的闸门必须按墙判负（撞上即结束）');
+
+  // 对照：同一张图拨到开启相位 [0,600) ⇒ 应该能正常走过去
+  sb.Snake.api.reset(); sb.Snake.api.start();
+  const S3 = sb.Snake.S, p3 = S3.pl[0];
+  p3.body = [{ x: 5, y: 2, L: 0 }, { x: 4, y: 2, L: 0 }, { x: 3, y: 2, L: 0 }]; p3.dir = [1, 0]; p3.queue.length = 0;
+  sb.__t = 100; S3.now = 100; S3.last = 100;
+  moveOnce(sb, S3.pl[0]);
+  assert.equal(S3.state, 'playing', '开启相位不该判负');
+  assert.equal(S3.pl[0].body[0].x, 6, '开启相位应当走到闸门那一格');
+
+  // 安全闸：门里有蛇身时，同一关闭相位下不再算墙（用户拍板 ①）
+  S3.pl[0].body = [{ x: 6, y: 2, L: 0 }, { x: 5, y: 2, L: 0 }];
+  S3.now = 700;
+  assert.equal(sb.Snake.gates.blocked(6, 2), false, '门里有蛇 ⇒ 闸门保持开启');
+});
