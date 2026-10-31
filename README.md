@@ -9,6 +9,14 @@
 |---|---|---|
 | ![霓虹夜](screenshots/neon-night.png) | ![赛博](screenshots/cyber.png) | ![熔岩](screenshots/lava-pk.png) |
 
+## 版本入口（三个版本都在线）
+
+| 版本 | 地址 | 说明 |
+|---|---|---|
+| **3.0（当前）** | <https://kkkk16689.github.io/isometric-snake/> | 2.5D 地形系统：8 张地图、相机跟随、层/高差/桥下通行、传送门、冰面滑行、闸门、运输带、主题联动、对手 CR |
+| 2.0 | <https://kkkk16689.github.io/isometric-snake/legacy20/> | 上一版：无地形，连击/金苹果/每日挑战/幽灵/PWA 齐备 |
+| v3（初版） | <https://kkkk16689.github.io/isometric-snake/legacy/> | 最早发布的那版，原样存档 |
+
 ## 在线试玩
 
 **https://kkkk16689.github.io/isometric-snake/**
