@@ -119,7 +119,7 @@ window.Snake = window.Snake || {};
   const tsOn = () => S.mode === 'expedition' || !!S.terrain;
   /* 关卡：层图由 terrain.js 建好后挂在 S.T 上；3D 关闭时 S.T 为 null ⇒ 走经典棋盘 */
   function loadLevel(id) {
-    const lv = Snake.levelById(id) || Snake.LEVELS[0];
+    const lv = Snake.levelById(id) || (Snake.LEVELS || []).find(l => l.id === 'neon-32') || Snake.LEVELS[0];   // 记忆失效也别落到测试夹具
     S.T = Snake.Terrain.build(lv); S.levelId = lv.id; S.levelName = lv.name;
     safeSet('iso-snake-3:level', lv.id);   // 记住这次选的图（下次点「3D」直接回到这里）
   }
