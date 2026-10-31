@@ -119,6 +119,9 @@ body.im #toast{bottom:44px} /* 沉浸：toast 抬到底部 HUD 之上 */
 /* 远征小地图：HUD 一侧独立小 canvas，只在 ?mode=expedition 显示，4~8Hz 重绘（规格 §4） */
 #mm{position:fixed;left:10px;bottom:10px;width:96px;height:96px;z-index:40;display:none;border:1px solid rgba(255,255,255,.16);border-radius:8px;background:rgba(6,10,20,.55);pointer-events:none;opacity:.9}
 body.mm #mm{display:block}
+#lv{display:none;max-width:104px;padding:3px 4px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:inherit;font-size:12px;font-family:inherit}
+#lv:focus{outline:none;border-color:rgba(127,212,255,.6)}
+
 </style>
 </head>
 <body>
@@ -137,6 +140,7 @@ body.mm #mm{display:block}
 <button id="daily" title="每日挑战：全球同一张棋盘">每日挑战</button>
 <button id="ghost" title="幽灵回放：关">幽灵</button>
         <button id="terrain" title="3D 地形：关">3D</button>
+          <select id="lv" title="3D 关卡"></select>
 <button id="copy" title="复制本局成绩">复制成绩</button>
 <select id="spr" aria-label="冲刺音效" title="冲刺音效">
 <option value="b">喷气</option>
@@ -297,6 +301,7 @@ window.Snake = window.Snake || {};
   function loadLevel(id) {
     const lv = Snake.levelById(id) || Snake.LEVELS[0];
     S.T = Snake.Terrain.build(lv); S.levelId = lv.id; S.levelName = lv.name;
+    safeSet('iso-snake-3:level', lv.id);   // 记住这次选的图（下次点「3D」直接回到这里）
   }
   /* 是否阻挡：有层图按层图（Stage 1 只看最高可走层 ⇒ 墙/水挡、高台与桥面可走），否则按棋盘边界 */
   const solid = (x, y) => S.T ? !S.T.hasWalk(x, y) : (x < 0 || y < 0 || x >= S.N || y >= S.N);
@@ -446,7 +451,7 @@ window.Snake = window.Snake || {};
   }
   function newGame() {
     const m = K.MODES[S.mode];
-    if (tsOn()) { if (!S.T) loadLevel(S.levelId || 'test-24'); setSize(S.T.w, viewN()); }   // 3D：按关卡建层图，视口按模式定
+    if (tsOn()) { if (!S.T) loadLevel(S.levelId || 'neon-32'); setSize(S.T.w, viewN()); }   // 3D：按关卡建层图，视口按模式定
     else { S.T = null; setSize(m.n, m.n); }   // 未开 3D：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
     if (S.daily && S.seed) setSeed(S.seed);   // 每日挑战重开：随机流复位到同一种子（同种子同局）
     S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
@@ -605,7 +610,7 @@ window.Snake = window.Snake || {};
   const setHold = (i, v) => { if (S.pl[i]) S.pl[i].hold = v; };
   function setMode(m) {
     S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0);
-    if (tsOn()) loadLevel(S.levelId || 'test-24'); else S.T = null;   // 开了 3D 就建层图，回经典就清掉
+    if (tsOn()) loadLevel(S.levelId || 'neon-32'); else S.T = null;   // 开了 3D 就建层图，回经典就清掉
     loadBest(); newGame(); bus.emit('hud');
   }
   function setSkin(p, k) { S.skin[p] = k; bus.emit('hud'); }
@@ -635,6 +640,7 @@ window.Snake = window.Snake || {};
     setSeed((+qs.get('seed') | 0) || dateSeed());
   }
   S.terrain = false;   // 3D（地形）开关，默认关：只有 URL 明确要求时才开，经典直链行为不变
+  S.levelId = safeGet('iso-snake-3:level', '') || '';   // 上次玩的 3D 关卡：决定「3D」按钮打开哪张图（URL 参数随后会覆盖）
   const tv = qs.get('terrain');
   if (tv !== null && tv !== '0') { S.terrain = true; if (tv !== '1') S.levelId = tv; }   // ?terrain=1 / ?terrain=harbor-32
   if (qs.get('level')) { S.levelId = qs.get('level'); S.terrain = true; }                 // ?level=<id> 隐含开启
@@ -660,12 +666,12 @@ window.Snake = window.Snake || {};
   /* 远征入口：Stage 1 先用 URL / api 直达（工具栏不加控件，见 Stage 1 简报 Q3） */
   function startExpedition(id) {
     S.mode = 'expedition'; S.wins = [0, 0]; S.daily = false; setSeed(0);
-    loadLevel(id || S.levelId || 'test-24'); loadBest(); newGame(); bus.emit('hud');
+    loadLevel(id || S.levelId || 'neon-32'); loadBest(); newGame(); bus.emit('hud');
   }
   function setTerrain(on, id) {   // 地形（3D）与模式正交，任何模式都能开关（用户要求：既保留原版、也能随时切升级版）
     S.terrain = !!on;
     if (id) S.levelId = id;
-    if (S.terrain) { if (!S.T) loadLevel(S.levelId || 'test-24'); } else S.T = null;
+    if (S.terrain) { if (!S.T) loadLevel(S.levelId || 'neon-32'); } else S.T = null;
     S.wins = [0, 0]; loadBest(); newGame(); bus.emit('hud');
   }
   Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, setTerrain, update };
@@ -2785,6 +2791,22 @@ window.Snake = window.Snake || {};
         api.setTerrain(!S.terrain);
         terrLabel(); syncModeUi();
         toast(S.terrain ? '3D 地形：开 · ' + (S.levelName || S.levelId) : '3D 地形：关 · 回到原版玩法');
+    /* 3D 关卡下拉：只在 3D 模式下出现；列表直接取关卡注册表（test-24 是自动化测试的最小图，故意不列） */
+    const lvSel = $('lv');
+    const lvSync = () => { if (!lvSel) return; lvSel.value = S.levelId; lvSel.style.display = S.terrain ? '' : 'none'; };
+    if (lvSel) {
+      (Snake.LEVELS || []).filter(l => l.id !== 'test-24').forEach(l => {
+        const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; lvSel.appendChild(o);
+      });
+      lvSel.addEventListener('change', () => {
+        api.loadLevel(lvSel.value);
+        const lv = Snake.levelById && Snake.levelById(lvSel.value);
+        toast('3D 关卡：' + ((lv && lv.name) || lvSel.value));
+      });
+      bus.on('resize', lvSync);
+      if (terrBtn) terrBtn.addEventListener('click', () => setTimeout(lvSync, 0));   // 开关 3D 后刷新可见性
+      lvSync();
+    }
         terrBtn.blur();
       });
       terrLabel();

@@ -121,6 +121,7 @@ window.Snake = window.Snake || {};
   function loadLevel(id) {
     const lv = Snake.levelById(id) || Snake.LEVELS[0];
     S.T = Snake.Terrain.build(lv); S.levelId = lv.id; S.levelName = lv.name;
+    safeSet('iso-snake-3:level', lv.id);   // 记住这次选的图（下次点「3D」直接回到这里）
   }
   /* 是否阻挡：有层图按层图（Stage 1 只看最高可走层 ⇒ 墙/水挡、高台与桥面可走），否则按棋盘边界 */
   const solid = (x, y) => S.T ? !S.T.hasWalk(x, y) : (x < 0 || y < 0 || x >= S.N || y >= S.N);
@@ -270,7 +271,7 @@ window.Snake = window.Snake || {};
   }
   function newGame() {
     const m = K.MODES[S.mode];
-    if (tsOn()) { if (!S.T) loadLevel(S.levelId || 'test-24'); setSize(S.T.w, viewN()); }   // 3D：按关卡建层图，视口按模式定
+    if (tsOn()) { if (!S.T) loadLevel(S.levelId || 'neon-32'); setSize(S.T.w, viewN()); }   // 3D：按关卡建层图，视口按模式定
     else { S.T = null; setSize(m.n, m.n); }   // 未开 3D：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
     if (S.daily && S.seed) setSeed(S.seed);   // 每日挑战重开：随机流复位到同一种子（同种子同局）
     S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
@@ -429,7 +430,7 @@ window.Snake = window.Snake || {};
   const setHold = (i, v) => { if (S.pl[i]) S.pl[i].hold = v; };
   function setMode(m) {
     S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0);
-    if (tsOn()) loadLevel(S.levelId || 'test-24'); else S.T = null;   // 开了 3D 就建层图，回经典就清掉
+    if (tsOn()) loadLevel(S.levelId || 'neon-32'); else S.T = null;   // 开了 3D 就建层图，回经典就清掉
     loadBest(); newGame(); bus.emit('hud');
   }
   function setSkin(p, k) { S.skin[p] = k; bus.emit('hud'); }
@@ -459,6 +460,7 @@ window.Snake = window.Snake || {};
     setSeed((+qs.get('seed') | 0) || dateSeed());
   }
   S.terrain = false;   // 3D（地形）开关，默认关：只有 URL 明确要求时才开，经典直链行为不变
+  S.levelId = safeGet('iso-snake-3:level', '') || '';   // 上次玩的 3D 关卡：决定「3D」按钮打开哪张图（URL 参数随后会覆盖）
   const tv = qs.get('terrain');
   if (tv !== null && tv !== '0') { S.terrain = true; if (tv !== '1') S.levelId = tv; }   // ?terrain=1 / ?terrain=harbor-32
   if (qs.get('level')) { S.levelId = qs.get('level'); S.terrain = true; }                 // ?level=<id> 隐含开启
@@ -484,12 +486,12 @@ window.Snake = window.Snake || {};
   /* 远征入口：Stage 1 先用 URL / api 直达（工具栏不加控件，见 Stage 1 简报 Q3） */
   function startExpedition(id) {
     S.mode = 'expedition'; S.wins = [0, 0]; S.daily = false; setSeed(0);
-    loadLevel(id || S.levelId || 'test-24'); loadBest(); newGame(); bus.emit('hud');
+    loadLevel(id || S.levelId || 'neon-32'); loadBest(); newGame(); bus.emit('hud');
   }
   function setTerrain(on, id) {   // 地形（3D）与模式正交，任何模式都能开关（用户要求：既保留原版、也能随时切升级版）
     S.terrain = !!on;
     if (id) S.levelId = id;
-    if (S.terrain) { if (!S.T) loadLevel(S.levelId || 'test-24'); } else S.T = null;
+    if (S.terrain) { if (!S.T) loadLevel(S.levelId || 'neon-32'); } else S.T = null;
     S.wins = [0, 0]; loadBest(); newGame(); bus.emit('hud');
   }
   Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, setTerrain, update };

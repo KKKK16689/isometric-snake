@@ -663,3 +663,20 @@ test('周期闸门：关闭态按墙判负；门里有蛇时保持开启（安�
   S3.now = 700;
   assert.equal(sb.Snake.gates.blocked(6, 2), false, '门里有蛇 ⇒ 闸门保持开启');
 });
+
+/* ---------- 3D 关卡选择：兜底图、记忆、切图 ---------- */
+test('3D 关卡：兜底图是 neon-32（不是测试夹具）、选过的图会被记住、切图会按新关卡重建层图', () => {
+  const a = load('', false, true);
+  a.Snake.api.setTerrain(true);                       // 不带 ?level= 直接开 3D
+  assert.equal(a.Snake.S.levelId, 'neon-32', '兜底图应当是 neon-32，而不是 test-24');
+  assert.equal(a.Snake.S.T.w, 32);
+  assert.equal(a.store.get('iso-snake-3:level'), 'neon-32', '选过的图应当被记住');
+  a.Snake.api.loadLevel('station-32');                // 切图
+  assert.equal(a.Snake.S.levelId, 'station-32');
+  assert.equal(a.Snake.S.T.w, 32);
+  assert.equal(a.store.get('iso-snake-3:level'), 'station-32', '切图后记忆也要更新');
+  const b = load('?level=ice-32', false, true);       // URL 直达优先于记忆
+  b.Snake.api.reset();
+  assert.equal(b.Snake.S.levelId, 'ice-32');
+  assert.equal(b.Snake.S.T.w, 32);
+});

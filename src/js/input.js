@@ -179,6 +179,22 @@ window.Snake = window.Snake || {};
         api.setTerrain(!S.terrain);
         terrLabel(); syncModeUi();
         toast(S.terrain ? '3D 地形：开 · ' + (S.levelName || S.levelId) : '3D 地形：关 · 回到原版玩法');
+    /* 3D 关卡下拉：只在 3D 模式下出现；列表直接取关卡注册表（test-24 是自动化测试的最小图，故意不列） */
+    const lvSel = $('lv');
+    const lvSync = () => { if (!lvSel) return; lvSel.value = S.levelId; lvSel.style.display = S.terrain ? '' : 'none'; };
+    if (lvSel) {
+      (Snake.LEVELS || []).filter(l => l.id !== 'test-24').forEach(l => {
+        const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; lvSel.appendChild(o);
+      });
+      lvSel.addEventListener('change', () => {
+        api.loadLevel(lvSel.value);
+        const lv = Snake.levelById && Snake.levelById(lvSel.value);
+        toast('3D 关卡：' + ((lv && lv.name) || lvSel.value));
+      });
+      bus.on('resize', lvSync);
+      if (terrBtn) terrBtn.addEventListener('click', () => setTimeout(lvSync, 0));   // 开关 3D 后刷新可见性
+      lvSync();
+    }
         terrBtn.blur();
       });
       terrLabel();
