@@ -1,6 +1,6 @@
 {
   "name": "isometric-snake",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "private": true,
   "description": "等距（2.5D）视角贪吃蛇：单 HTML 文件、零依赖、纯 Canvas 渲染（大版本 2.0）",
   "scripts": {
