@@ -707,8 +707,9 @@ test('集成：远征模式渲染——层图接管地图、灰模地形块上�
   const main = H.cv.getContext('2d');
   assert.ok(main._t.length > 0, '主画布应有绘制轨迹');
   const trace = main._t.join(' ');
-  assert.ok(trace.includes('#8A94A6') || trace.includes('#5A6473') || trace.includes('#3B4252'),
-    '灰模地形块的三面配色应上屏（墙/高台/桥面）');
+  const tc = H.sb.Snake.Render.terrainColors().map(s => s.toLowerCase());
+  assert.ok(tc.length === 3 && tc.every(c => trace.toLowerCase().includes(c)),
+    '地形三面配色（跟随当前主题后的实际颜色）应全部上屏：' + tc.join('/'));
   assert.ok(S.camCX >= half - .01 && S.camCX <= S.N - 1 - half + .01, '相机 X 应夹在 [half, N-1-half]：' + S.camCX);
   assert.ok(S.camCY >= half - .01 && S.camCY <= S.N - 1 - half + .01, '相机 Y 应夹在 [half, N-1-half]：' + S.camCY);
   const hx = S.pl[0].body[0].x, hy = S.pl[0].body[0].y;
@@ -800,4 +801,22 @@ test('集成：远征渲染成本——地形块每帧绘制量有预算，静�
   }
   assert.ok(maxD < 8, '相机每帧位移应远小于一格（整格跳 = 15）：' + maxD.toFixed(2));
   assert.ok(moves >= 10, '相机应逐帧连续移动，而不是隔一段才跳一次：' + moves + '/240');
+});
+
+/* ---------- 3D 结构色跟随主题（方案 A） ---------- */
+test('3D 地形：结构色 = biome 基色 × 主题强调色，换主题就变（语义材质不参与）', () => {
+  const H = makeDom({ search: '?terrain=1&level=neon-32', dpr: 1 });
+  boot(H);
+  const Rr = H.sb.Snake.Render;
+  assert.equal(Rr.mixHex('#000000', '#ffffff', .5), '#808080', '混色中点应为中灰');
+  assert.equal(Rr.mixHex('#ff0000', '#ffffff', 0), '#ff0000', 't=0 应原样返回');
+  assert.equal(Rr.mixHex('rgba(1,2,3,.5)', '#ffffff', .5), 'rgba(1,2,3,.5)', '非 #rrggbb 应原样返回');
+  Rr.invalidateBoard(); H.drive(2);
+  const c1 = Rr.terrainColors();
+  const th = H.sb.Snake.theme.current, saved = th.canvas;
+  th.canvas = Object.assign({}, saved, { accent: '#FF0000' });   // 换一个强调色
+  Rr.invalidateBoard(); H.drive(2);
+  const c2 = Rr.terrainColors();
+  assert.notEqual(c1[0], c2[0], '换主题后地块顶面颜色必须变化');
+  th.canvas = saved;
 });

@@ -184,7 +184,8 @@ window.Snake = window.Snake || {};
     const lvSync = () => { if (!lvSel) return; lvSel.value = S.levelId; lvSel.style.display = S.terrain ? 'inline-block' : 'none'; };
     if (lvSel) {
       (Snake.LEVELS || []).filter(l => l.id !== 'test-24').forEach(l => {
-        const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; lvSel.appendChild(o);
+        const TAG = { 'harbor-32': '集装箱/栈桥', 'ridges-40': '断崖带', 'neon-32': '楼块/高架', 'ruins-32': '台阶/断柱', 'lava-32': '岩浆湖', 'ice-32': '冰湖滑行', 'station-32': '闸门/运输带' };
+        const o = document.createElement('option'); o.value = l.id; o.textContent = l.name + (TAG[l.id] ? ' · ' + TAG[l.id] : ''); lvSel.appendChild(o);
       });
       lvSel.addEventListener('change', () => {
         api.loadLevel(lvSel.value);
@@ -192,6 +193,10 @@ window.Snake = window.Snake || {};
         toast('3D 关卡：' + ((lv && lv.name) || lvSel.value));
       });
       bus.on('resize', lvSync);
+    bus.on('themeChange', () => {   // 换主题时结构色会跟着变，明确说一句，免得以为没生效
+      const th = Snake.theme && Snake.theme.current;
+      if (S.terrain && th) toast('主题：' + th.name + ' · 3D 地形已跟随');
+    });
       if (terrBtn) terrBtn.addEventListener('click', () => setTimeout(lvSync, 0));   // 开关 3D 后刷新可见性
       lvSync();
     }

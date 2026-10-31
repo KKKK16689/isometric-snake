@@ -213,6 +213,7 @@ window.Snake = window.Snake || {};
     finally { camOX = kx; camOY = ky; ctx = main; }
   }
   function paintTiles(b, x0, y0, x1, y1, world) {
+    themeTint();
           const dark = isDarkBg(), lw = 1 / cssK;   // 网格/倒角线宽 = 1 CSS px（不随显示缩放变粗）
     let skirt = null;   // 经典：整块棋盘的台缘（远征视口在地图内部，台缘不可见 ⇒ 不画）
     if (!S.T && !world) {
@@ -303,7 +304,29 @@ window.Snake = window.Snake || {};
     TERR_C[0] = b.top; TERR_C[1] = b.left; TERR_C[2] = b.right; STRIP = b.strip || null;
   }
   const liftOf = (x, y) => S.T ? ((S.T.topWalk(x, y) || { h: 0 }).h) * BLK : 0;   // 该格「最高可走层」的抬升（食物/金苹果落点按此层）
-  const liftAt = (x, y, L) => S.T ? (L || 0) * BLK : 0;   // 实体按自己所在层的层高抬升（规格 §3.2：层号参与碰撞与渲染）
+  const liftAt = (x, y, L) => S.T ? (L || 0) * BLK : 0;
+  /* 十六进制混色：把 a 往 b 拉 t（0~1）。非 #rrggbb 原样返回，避免把非法色塞进 canvas */
+  function mixHex(a, b, t) {
+    const ok = c => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
+    if (!ok(a) || !ok(b)) return a;
+    const p = c => [1, 3, 5].map(i => parseInt(c.substr(i, 2), 16));
+    const A = p(a), B = p(b), o = A.map((v, i) => Math.round(v + (B[i] - v) * t));
+    return '#' + o.map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+  /* 主题给「结构色」上色：只改地块的顶/左/右面（TERR_C）；岩浆/水/冰/传送门/闸门/运输带是别处写死的语义色，不参与。
+     每帧都从 BIOMES 基色重算，所以不会滚雪球（不是就地读上一次的结果）。 */
+  function themeTint() {
+    const th = Snake.theme && Snake.theme.current;
+    const lv = Snake.levelById && Snake.levelById(S.levelId);
+    const base = lv && BIOMES[lv.biome];
+    const acc = th && th.canvas && (th.canvas.accent || th.canvas.spark || th.canvas.food);
+    if (!base || !acc) return;
+    TERR_C[0] = mixHex(base.top, acc, .34);
+    TERR_C[1] = mixHex(base.left, acc, .34);
+    TERR_C[2] = mixHex(base.right, acc, .40);
+    STRIP = base.strip ? mixHex(base.strip, acc, .16) : null;
+  }
+  bus.on('themeChange', () => { boardCache = null; bRegion = null; vig = null; });   // 换主题：静态地板层必须重画才能换色   // 实体按自己所在层的层高抬升（规格 §3.2：层号参与碰撞与渲染）
   let PORTALS = [], portalsFor = null;                    // 传送门位置缓存（关卡换了才重算——门很少，重算可忽略）
   function refreshPortals() {
     if (portalsFor === S.T) return;
@@ -748,5 +771,5 @@ window.Snake = window.Snake || {};
     requestAnimationFrame(frame);
   }
   const toScreen = (x, y, L) => [PX(x, y), PY(x, y) + K.HH - 6 + (L === undefined ? liftOf(Math.round(x), Math.round(y)) : liftAt(x, y, L))];   // 给粒子层用：带相机与抬升（给了层号就按层，否则按该格最高可走层）
-  Snake.Render = { boot, invalidateBoard: () => { boardCache = null; }, refit: applyCanvasSize, ease, segPos, toScreen };
+  Snake.Render = { boot, mixHex, terrainColors: () => TERR_C.slice(), invalidateBoard: () => { boardCache = null; bRegion = null; }, refit: applyCanvasSize, ease, segPos, toScreen };
 })();
