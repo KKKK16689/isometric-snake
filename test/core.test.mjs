@@ -680,3 +680,13 @@ test('3D 关卡：兜底图是 neon-32（不是测试夹具）、选过的图会
   assert.equal(b.Snake.S.levelId, 'ice-32');
   assert.equal(b.Snake.S.T.w, 32);
 });
+
+/* ---------- 人机对手的名字 ---------- */
+test('人机模式的对手叫 CR（HUD / 比分条 / 名牌 / 结算共用 K.nm）', () => {
+  const sb = load('', false, true);
+  sb.Snake.api.setMode('ai');
+  assert.equal(sb.Snake.K.nm(1), 'CR', '对手名应当是 CR');
+  assert.equal(sb.Snake.K.nm(0), '你', '自己仍然是「你」');
+  sb.Snake.api.setMode('pk');
+  assert.equal(sb.Snake.K.nm(1), 'P2', '经典双人不该被改名');
+});
