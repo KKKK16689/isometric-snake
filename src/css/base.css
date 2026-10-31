@@ -92,3 +92,5 @@ body.im #toast{bottom:44px} /* 沉浸：toast 抬到底部 HUD 之上 */
 /* 远征小地图：HUD 一侧独立小 canvas，只在 ?mode=expedition 显示，4~8Hz 重绘（规格 §4） */
 #mm{position:fixed;left:10px;bottom:10px;width:96px;height:96px;z-index:40;display:none;border:1px solid rgba(255,255,255,.16);border-radius:8px;background:rgba(6,10,20,.55);pointer-events:none;opacity:.9}
 body.mm #mm{display:block}
+#lv{display:none;max-width:104px;padding:3px 4px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:inherit;font-size:12px;font-family:inherit}
+#lv:focus{outline:none;border-color:rgba(127,212,255,.6)}
