@@ -181,7 +181,7 @@ window.Snake = window.Snake || {};
         toast(S.terrain ? '3D 地形：开 · ' + (S.levelName || S.levelId) : '3D 地形：关 · 回到原版玩法');
     /* 3D 关卡下拉：只在 3D 模式下出现；列表直接取关卡注册表（test-24 是自动化测试的最小图，故意不列） */
     const lvSel = $('lv');
-    const lvSync = () => { if (!lvSel) return; lvSel.value = S.levelId; lvSel.style.display = S.terrain ? '' : 'none'; };
+    const lvSync = () => { if (!lvSel) return; lvSel.value = S.levelId; lvSel.style.display = S.terrain ? 'inline-block' : 'none'; };
     if (lvSel) {
       (Snake.LEVELS || []).filter(l => l.id !== 'test-24').forEach(l => {
         const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; lvSel.appendChild(o);
