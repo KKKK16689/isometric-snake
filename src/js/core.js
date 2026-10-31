@@ -87,7 +87,7 @@ window.Snake = window.Snake || {};
   const dateStr = s => (s >= 19000101 && s <= 99991231) ? ((s / 10000) | 0) + '-' + String(((s / 100) % 100) | 0).padStart(2, '0') + '-' + String(s % 100).padStart(2, '0') : '';   // 仅日期形种子可转日期
   const safeGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
   const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
-  const nm = i => (K.MODES[S.mode].ai ? (i ? 'AI' : '你') : 'P' + (i + 1));
+  const nm = i => (K.MODES[S.mode].ai ? (i ? 'CR' : '你') : 'P' + (i + 1));   // 人机对手叫 CR
   /* 等距投影：格 (x,y) 顶点的屏幕坐标 */
   const P = (x, y) => [S.OX + (x - y) * K.HW, K.OY + (x + y) * K.HH];
   /* 廉价种子随机（闪电用） */

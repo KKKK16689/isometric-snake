@@ -4,7 +4,7 @@
    旧的 stale-while-revalidate 会让用户刷新后仍看到上一版（曾据此误判「眼睛没跟着爬」等观感问题）。
    其余同源 GET 仍为 stale-while-revalidate（命中即回、后台刷新）。
    注册入口在 src/index.html 的 boot 段（仅 http(s) 协议注册，file:// 双击打开静默跳过）。 */
-const CACHE = 'iso-snake-v3.0-stage5.1';   // 版本+1 让老客户端整缓存重建
+const CACHE = 'iso-snake-v3.0-stage5.2';   // 版本+1 让老客户端整缓存重建
 const PRECACHE = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
