@@ -638,14 +638,14 @@ test('周期闸门：关闭态按墙判负；门里有蛇时保持开启（安�
   sb.Snake.S.levelId = lv.id; sb.Snake.S.mode = 'expedition';
   sb.Snake.S.MAP_N = sb.Snake.S.N = sb.Snake.S.T.w;
   assert.equal(sb.Snake.gates.list().length, 1, '闸门查询要能通过 LEVELS 回退路径找到夹具关卡');
-  assert.equal(sb.Snake.gates.blocked(6, 2), true, '相位 0~599ms 是关闭态 ⇒ 此刻算墙');
+  assert.equal(sb.Snake.gates.blocked(6, 2), false, '相位 0~599ms 是开启态');
 
   sb.Snake.api.reset();                            // 注入层图后先建局：reset→newGame 会按 S.mode/S.T 摆好玩家
   const S = sb.Snake.S, p = S.pl[0];
   assert.ok(p, 'reset 后玩家必须存在');
   p.body = [{ x: 5, y: 2, L: 0 }, { x: 4, y: 2, L: 0 }, { x: 3, y: 2, L: 0 }]; p.dir = [1, 0]; p.queue.length = 0;
   sb.Snake.api.start();                            // 必须先真的开局，否则 state='ready' 根本不会走
-  sb.__t = 700; S.now = 700; S.last = 700;          // 关闭相位 [600,1200)
+  sb.__t = 700; S.now = 700; S.last = 700; S.elapsed = 700;          // 关闭相位 [600,1200)
   moveOnce(sb, S.pl[0]);                              // 非冲刺蛇隔 tick 才动：必须等到真正移动的那一拍
   assert.notEqual(S.state, 'playing', '关闭态的闸门必须按墙判负（撞上即结束）');
 
@@ -660,7 +660,7 @@ test('周期闸门：关闭态按墙判负；门里有蛇时保持开启（安�
 
   // 安全闸：门里有蛇身时，同一关闭相位下不再算墙（用户拍板 ①）
   S3.pl[0].body = [{ x: 6, y: 2, L: 0 }, { x: 5, y: 2, L: 0 }];
-  S3.now = 700;
+  S3.now = 700; S3.elapsed = 700;
   assert.equal(sb.Snake.gates.blocked(6, 2), false, '门里有蛇 ⇒ 闸门保持开启');
 });
 
@@ -689,4 +689,83 @@ test('人机模式的对手叫 CR（HUD / 比分条 / 名牌 / 结算共用 K.nm
   assert.equal(sb.Snake.K.nm(0), '你', '自己仍然是「你」');
   sb.Snake.api.setMode('pk');
   assert.equal(sb.Snake.K.nm(1), 'P2', '经典双人不该被改名');
+});
+/* 3.0 核心玩法：通过真实逐格输入跑完航线，不把玩家直接挪到终点。 */
+function routeDirection(S, goal) {
+  const p = S.pl[0], h = p.body[0], dirs = Object.entries(SnakeDirs);
+  const occupied = new Set(p.body.slice(0, -1).map(n => S.T.key(n.x, n.y, n.L || 0)));
+  const key = n => S.T.key(n.x, n.y, n.L || 0);
+  const queue = [{ ...h, dir: p.dir, first: null }], seen = new Set();
+  for (let qi = 0; qi < queue.length; qi++) {
+    const n = queue[qi];
+    if (n.x === goal.x && n.y === goal.y && n.L === goal.L) return n.first;
+    for (const [name, d] of dirs) {
+      if (d[0] === -n.dir[0] && d[1] === -n.dir[1]) continue;
+      const x = n.x + d[0], y = n.y + d[1], pick = S.T.pick(x, y, n.L || 0);
+      if (!pick) continue;
+      const next = { x, y, L: pick.h, dir: d, first: n.first || name };
+      const k = key(next) + ':' + name;
+      if (occupied.has(key(next)) || seen.has(k)) continue;
+      seen.add(k); queue.push(next);
+    }
+  }
+  throw new Error('航标不可达：' + JSON.stringify(goal));
+}
+const SnakeDirs = { up: [0,-1], right: [1,0], down: [0,1], left: [-1,0] };
+test('港口航线：实际转向完成桥下、桥上、跨水、高台六目标，保存通关并可重试', () => {
+  const sb = load('', false, true), { api, S } = sb.Snake;
+  api.startMission(); api.start();
+  let moves = 0;
+  while (S.state === 'playing' && moves++ < 350) {
+    const goal = S.mission.goals[S.missionIndex];
+    api.press(0, routeDirection(S, goal));
+    moveOnce(sb, S.pl[0]);
+  }
+  assert.equal(S.missionWon, true, '应当能通过真实输入通关');
+  assert.equal(S.missionIndex, 6); assert.equal(S.pl[0].lives, 3, '路线无需靠撞墙复活完成');
+  const progress = JSON.parse(sb.store.get('iso-snake-progress-v1'));
+  assert.ok(progress['harbor-route-1'].bestMs > 0);
+  assert.equal(sb.store.has('iso-snake-best2-easy'), false, '航线不覆盖经典最高分');
+  api.restart();
+  assert.equal(S.missionIndex, 0); assert.equal(S.state, 'ready'); assert.equal(S.missionWon, false);
+  api.setMode('normal'); assert.equal(S.mission, null);
+  assert.equal(JSON.parse(sb.store.get('iso-snake-progress-v1'))['harbor-route-1'].completed, true);
+});
+test('落点提示：反映排队方向、同层占位和不可跨越的高差', () => {
+  const sb = load('', false, true), { api, S } = sb.Snake;
+  api.startMission();
+  const p = S.pl[0];
+  assert.equal(api.preview().x, 4); assert.equal(api.preview().safe, true);
+  p.queue = [[0,-1]]; assert.equal(api.preview().y, 12);
+  p.queue = []; p.body = [{x:3,y:4,L:0},{x:2,y:4,L:0},{x:1,y:4,L:0}];
+  assert.equal(api.preview().L, 0, '桥下不会误提示跳上桥面');
+  p.body = [{x:7,y:6,L:0},{x:6,y:6,L:0},{x:5,y:6,L:0}]; p.dir=[0,1];
+  assert.equal(api.preview().safe, false, '不能从平地直接跳上 h2 桥面');
+});
+test('冰面与运输带：途中蛇身不能穿过，冰面途经金苹果可拾取', () => {
+  for (const [id, head, dir, middle] of [
+    ['ice-32', {x:9,y:16,L:0}, [1,0], {x:15,y:16,L:0}],
+    ['station-32', {x:7,y:22,L:0}, [1,0], {x:10,y:22,L:0}]
+  ]) {
+    const sb = load('', false, true), { api, S } = sb.Snake;
+    api.setMode('normal'); api.setTerrain(true, id);
+    const p = S.pl[0]; p.body = [head,{x:head.x-1,y:head.y,L:0},middle,{x:head.x-2,y:head.y,L:0}]; p.dir=dir; p.queue=[];
+    api.start(); moveOnce(sb,p);
+    assert.equal(S.state, 'over', id + ' 应检测途中碰撞');
+    assert.match(S.msg,/自己的身体/);
+  }
+  const sb = load('', false, true), { api, S } = sb.Snake;
+  api.setTerrain(true,'ice-32'); const p = S.pl[0];
+  p.body=[{x:9,y:16,L:0},{x:8,y:16,L:0},{x:7,y:16,L:0}]; p.dir=[1,0]; p.queue=[];
+  S.gold={x:15,y:16,L:0,born:0}; S.foods=[{x:3,y:3,L:0}];
+  api.start(); moveOnce(sb,p); assert.equal(p.score,3); assert.equal(S.gold,null);
+});
+test('暂停与切后台：航线计时、闸门相位停止；重开归零', () => {
+  const sb = load('', false, true), { api, S } = sb.Snake;
+  api.startMission(); api.start(); stepOnce(sb);
+  const elapsed=S.elapsed; S.pl[0].streak=3; S.pl[0].streakAt=elapsed; S.gold={x:1,y:1,L:0,born:elapsed}; api.togglePause();
+  sb.__t += 60000; api.update(sb.__t); assert.equal(S.elapsed,elapsed);
+  api.start(); stepOnce(sb); assert.ok(S.elapsed < elapsed + 250);
+  assert.equal(S.pl[0].streak,3,'暂停不消耗连击窗口'); assert.ok(S.gold,'暂停不消耗金苹果寿命');
+  api.restart(); assert.equal(S.elapsed,0);
 });

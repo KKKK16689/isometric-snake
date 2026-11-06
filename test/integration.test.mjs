@@ -78,7 +78,8 @@ function makeDom(opts = {}) {
 
   /* 固定元素树：与 src/index.html 一一对应；未知 id 返回 null（打错 id 会当场炸出来） */
   const byId = {};
-  ['hl', 'hr', 'fs', 'snd', 'mus', 'vib', 'daily', 'ghost', 'copy', 'aiLv', 'hint', 'toast', 'live'].forEach(id => { byId[id] = El('span'); byId[id].id = id; });
+  ['hl', 'hr', 'fs', 'snd', 'mus', 'vib', 'daily', 'ghost', 'copy', 'aiLv', 'terrain', 'hint', 'toast', 'live'].forEach(id => { byId[id] = El('span'); byId[id].id = id; });
+  byId.lv = El('select'); byId.lv.id = 'lv';
   byId.spr = El('select'); byId.spr.id = 'spr'; byId.spr.value = 'b';
   byId.mm = El('canvas'); byId.mm.id = 'mm'; makeCanvas(byId.mm);   // 远征小地图（HUD 一侧独立小 canvas）
   const cv = byId.c = El('canvas'); makeCanvas(cv);
@@ -819,4 +820,26 @@ test('3D 地形：结构色 = biome 基色 × 主题强调色，换主题就变�
   const c2 = Rr.terrainColors();
   assert.notEqual(c1[0], c2[0], '换主题后地块顶面颜色必须变化');
   th.canvas = saved;
+});
+
+test('地形选择器：反复开关不重复添加地图或绑定事件，换图重置对局', () => {
+  const H = makeDom(); boot(H);
+  const n = H.byId.lv.children.length;
+  assert.equal(n, H.sb.Snake.LEVELS.length - 1);
+  for (let i=0;i<6;i++) H.clickEl(H.byId.terrain);
+  assert.equal(H.byId.lv.children.length,n);
+  assert.equal(H.byId.lv._h.change.length,1);
+  H.api.start(); H.drive(15);
+  H.byId.lv.value='harbor-route'; H.fireEl(H.byId.lv,'change',{});
+  assert.equal(H.S.levelId,'harbor-route'); assert.equal(H.S.T.w,18);
+  assert.equal(H.S.state,'ready'); assert.equal(H.S.pl[0].body[0].x,3);
+});
+test('键盘：选择框中按方向键与系统重复按键不会误操纵蛇；失焦自动暂停', () => {
+  const H=makeDom(); boot(H);
+  H.fireWin('keydown',{code:'ArrowUp',target:{tagName:'SELECT'},preventDefault(){}});
+  assert.equal(H.S.state,'ready');
+  H.key('ArrowUp'); const n=H.S.pl[0].queue.length;
+  H.fireWin('keydown',{code:'ArrowLeft',repeat:true,preventDefault(){}});
+  assert.equal(H.S.pl[0].queue.length,n);
+  H.fireWin('blur',{}); assert.equal(H.S.state,'paused');
 });
