@@ -23,7 +23,9 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<title>等距贪吃蛇</title>
+<meta name="author" content="孔垂瑞">
+<meta name="application-version" content="3.0.0">
+<title>等距贪吃蛇 V3.0.0</title>
 <style>
 /* 默认主题（霓虹夜）变量兜底：JS 未运行时首屏即默认主题；切换由 themes.js 覆盖同名变量 */
 :root{--bg:#060a14;--fg:#e6ecff;--muted:#7f8fb5;--f1:#0a1122;--f2:#0c142a;--edge:#1b2a55;--btn:#0d1530;
@@ -122,10 +124,45 @@ body.mm #mm{display:block}
 #lv{display:none;max-width:104px;padding:3px 4px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:inherit;font-size:12px;font-family:inherit}
 #lv:focus{outline:none;border-color:rgba(127,212,255,.6)}
 
+/* 3.0 操作层：玩法在前，细项设置按需展开。 */
+[hidden]{display:none!important}
+.play-actions{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:5px;z-index:48;padding:5px;border:1px solid #263b50;border-radius:16px;background:rgba(8,18,30,.95);backdrop-filter:blur(12px)}
+.play-actions button{border:0;background:transparent;color:#dbe9ef;font:500 13px system-ui;padding:9px 12px;border-radius:10px;white-space:nowrap;cursor:pointer}
+.play-actions button:hover,.play-actions button:focus-visible{background:#203749;color:#a7ffe2}
+.experience-enabled .mode,.experience-enabled .th{display:none!important}
+.experience-enabled.settings-open .mode{display:flex!important;position:fixed;top:66px;left:50%;transform:translateX(-50%);max-width:min(720px,calc(100vw - 44px));width:calc(100vw - 44px);padding:16px;margin:0;border:1px solid #304a61;border-radius:18px;background:#0b1729;gap:9px;z-index:47;white-space:normal;box-shadow:0 14px 40px #0008}
+.experience-enabled.settings-open .mode button,.experience-enabled.settings-open .mode select{font-size:13px;min-height:36px;padding:6px 12px}
+.experience-enabled.settings-open .th{display:flex!important;position:fixed;top:auto;bottom:70px;left:50%;transform:translateX(-50%);margin:0;padding:12px 18px;border:1px solid #304a61;border-radius:30px;background:#0b1729;z-index:47;gap:12px}
+#assist[aria-pressed="true"]{border-color:#80e8bf;color:#80e8bf}
+.experience{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(4,10,18,.83);backdrop-filter:blur(10px);overflow:auto;box-sizing:border-box;touch-action:pan-y}
+.experience-card{position:relative;width:100%;max-width:620px;max-height:calc(100dvh - 48px);overflow:auto;box-sizing:border-box;padding:36px;border:1px solid #294350;border-radius:26px;background:linear-gradient(145deg,#112538,#08131f 70%);box-shadow:0 22px 80px #0006;color:#ecf5f7;touch-action:pan-y}
+.eyebrow{font:600 11px ui-monospace,monospace;letter-spacing:2px;color:#81dbbc;margin:0 0 17px}
+.experience-card h2{font-size:clamp(27px,5vw,39px);font-weight:650;line-height:1.2;letter-spacing:-1px;margin:0 0 15px}
+.experience-card .intro{font-size:14px;color:#adc0ce;line-height:1.8;margin:0 0 24px}
+.experience-card button{font-family:inherit;cursor:pointer;color:inherit;border:1px solid #294151;border-radius:12px;background:#132737;transition:background .15s,border-color .15s}
+.experience-card button:hover{background:#203b4a;border-color:#67ba9e}
+.experience-card button:focus-visible,.play-actions button:focus-visible{outline:2px solid #a6ffe0;outline-offset:3px}
+.experience-card .feature-card{display:flex;align-items:center;text-align:left;width:100%;padding:19px 16px;gap:15px;background:#164536;border-color:#3c8068;margin-bottom:12px}
+.card-icon{font-size:35px;color:#9bffcf}.feature-card span:nth-child(2){flex:1}.feature-card small,.feature-card strong,.feature-card em{display:block}.feature-card strong{font-size:23px;margin:4px 0 7px}.feature-card small{font-size:10px;letter-spacing:1px;color:#b0e6ce}.feature-card em{font-size:11px;font-style:normal;color:#a9ccbb}.feature-card b{font-size:12px;color:#b7f4d9}
+.choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.choice-grid button{text-align:left;padding:17px}.choice-grid strong,.choice-grid small{display:block}.choice-grid strong{font-size:15px;font-weight:600}.choice-grid small{font-size:11px;color:#93aab9;margin-top:7px}
+.card-footer{display:flex;flex-wrap:wrap;gap:9px;margin-top:22px}.card-footer button{padding:11px 15px;font-size:13px}.experience-card .primary{background:#93ecc7;border-color:#93ecc7;color:#09251d;font-weight:650}.experience-card .primary:hover{background:#b4ffdf}.credits{margin:24px 0 0;color:#6f899a;font-size:10px}.micro{font-size:12px;color:#92aeba;line-height:1.8}.experience-card svg{display:block;width:min(100%,330px);margin:4px auto}.training-message{min-height:48px;font-size:14px;line-height:1.7;color:#b4d6cd}.training-controls{display:flex;justify-content:center;gap:8px}.training-controls button{font-size:25px;min-width:46px;min-height:48px;touch-action:none}.training-controls button:last-child{font-size:14px;padding:0 12px}.result-score{font:600 44px system-ui;color:#98edca;margin:20px 0}.result-score small{display:block;font-size:12px;color:#90a9ba;margin-top:5px}
+#mission-hud{position:fixed;top:76px;left:16px;z-index:35;max-width:270px;padding:12px 16px;border-left:2px solid #96edca;background:#0a182be8;border-radius:0 12px 12px 0;pointer-events:none}#mission-hud b,#mission-hud span,#mission-hud small{display:block}#mission-hud b{font-size:14px;color:#a3f5d3}#mission-hud span{font-size:11px;line-height:1.7;color:#a7bfcd;margin-top:5px}#mission-hud small{color:#6e9caa;font:11px ui-monospace,monospace;margin-top:6px}
+.experience-enabled .cmp{top:76px!important}.experience-enabled #lv{max-width:190px}.experience-enabled:not(.pk) .sw{display:none!important}.experience-enabled .eb{top:72px!important}
+@media(max-width:640px){.play-actions{width:max-content;max-width:calc(100vw - 20px);box-sizing:border-box;gap:0}.play-actions button{padding:9px 11px;font-size:12px}.experience{padding:14px}.experience-card{padding:25px 22px;max-height:calc(100dvh - 28px);border-radius:20px}.experience-card h2{font-size:29px}.experience-card .intro{font-size:12px;margin-bottom:18px}.experience-card .feature-card{padding:14px 12px;gap:9px}.feature-card strong{font-size:20px}.card-icon{font-size:27px}.choice-grid button{padding:14px 12px}.credits{font-size:9px;line-height:1.7}#mission-hud{top:69px;left:10px;max-width:210px;padding:8px 11px}#mission-hud span{display:none}.experience-enabled .cmp{top:auto!important;bottom:170px}.experience-enabled main{padding-top:80px}.experience-enabled.im main{padding-top:0}.experience-enabled .pad button{min-height:44px}.experience-enabled .pad{gap:7px}.experience-enabled .hud{font-size:12px}}
+@media(max-height:520px){.experience{align-items:flex-start}.experience-card{padding:22px 28px}.experience-card h2{font-size:27px}.experience-card h2 br{display:none}.experience-card svg{width:200px}.experience-card .intro{margin-bottom:12px}.choice-grid{grid-template-columns:repeat(4,1fr)}.choice-grid button{padding:12px 9px}.choice-grid strong{font-size:12px}.choice-grid small{font-size:10px}.card-footer{margin-top:14px}.credits{margin-top:14px}#mission-hud{max-width:180px}#mission-hud span{display:none}}
+@media(prefers-reduced-motion:reduce){.experience-card button{transition:none}}
+
 </style>
 </head>
 <body>
 <main>
+<nav class="play-actions" aria-label="游戏操作">
+<button id="menu">⌂ <span>主页</span></button><button id="pause">Ⅱ <span>暂停</span></button>
+<button id="restart">↻ <span>重来</span></button><button id="help">? <span>练习</span></button>
+<button id="settings" aria-expanded="false">⚙ <span>设置</span></button>
+</nav>
+<section id="mission-hud" aria-label="航线目标" hidden><b id="mission-title"></b><span id="mission-tip"></span><small id="mission-time"></small></section>
+<div id="experience" class="experience" hidden></div>
 <h1>等距贪吃蛇</h1>
 <div class="mode">
 <button data-m="easy" class="on">简单</button>
@@ -156,8 +193,8 @@ body.mm #mm{display:block}
       <canvas id="mm" width="96" height="96" aria-hidden="true"></canvas>
 <div class="stage">
 <div class="pad" data-p="0">
-<button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↑</button><span></span>
-<button data-s="left" aria-label="左">←</button><button data-s="down" aria-label="下">↓</button><button data-s="right" aria-label="右">→</button>
+<button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↗</button><span></span>
+<button data-s="left" aria-label="左">↖</button><button data-s="down" aria-label="下">↙</button><button data-s="right" aria-label="右">↘</button>
 </div>
 <canvas id="c" role="img" aria-label="等距视角的贪吃蛇棋盘"></canvas>
 <div class="eb" data-p="0"><i></i></div>
@@ -165,8 +202,8 @@ body.mm #mm{display:block}
 <div class="cmp" data-p="0"><b class="fd"><u></u></b><i class="hd"></i></div>
 <div class="cmp" data-p="1"><b class="fd"><u></u></b><i class="hd"></i></div>
 <div class="pad" data-p="1">
-<button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↑</button><span></span>
-<button data-s="left" aria-label="左">←</button><button data-s="down" aria-label="下">↓</button><button data-s="right" aria-label="右">→</button>
+<button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↗</button><span></span>
+<button data-s="left" aria-label="左">↖</button><button data-s="down" aria-label="下">↙</button><button data-s="right" aria-label="右">↘</button>
 </div>
 <div class="sw" data-p="0"></div>
 <div class="sw" data-p="1"></div>
@@ -175,7 +212,7 @@ body.mm #mm{display:block}
 <div class="hint" id="hint">像 App 一样全屏打开：<br>iPhone：Safari 点分享，再点“添加到主屏幕”<br>安卓：浏览器菜单里选“添加到主屏幕”或“安装应用”<br><span>点这里关闭</span></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="live" class="sr-only" aria-live="polite"></div>
-<p class="tip">方向键对应屏幕方向，空格暂停。按住 Shift、E 或 Enter 冲刺，手机按住「冲」键冲刺，也可在棋盘上滑动转向。罗盘里箭头是蛇的朝向，橙点指向最近的食物。简单模式有 3 条命。</p>
+<p class="tip">↑/W 对应右上，→/D 对应右下，↓/S 对应左下，←/A 对应左上；空格暂停。按住 Shift、E 或 Enter 冲刺，手机按住「冲」键冲刺，也可在棋盘上滑动转向。罗盘里箭头是蛇的朝向，橙点指向最近的食物。简单模式有 3 条命。</p>
 </main>
 <script>
 /* core.js —— 游戏规则与状态（唯一真相）
@@ -186,6 +223,7 @@ window.Snake = window.Snake || {};
 
   /* ---------- 常量 ---------- */
   const K = {
+    VERSION: '3.0.0', AUTHOR: '孔垂瑞',
     TW: 30, TH: 15,
     HW: 15, HH: 7.5,                     // 半格宽/高：TW/TH 派生常量（去 getter，省逐帧热路径开销）
     OY: 34,
@@ -239,6 +277,8 @@ window.Snake = window.Snake || {};
     lowFx: false, frameDt: .016,        // lowFx 由 render 检测并写入
     mode: 'easy', pl: [], foods: [], state: 'ready', msg: '', last: 0,
     best: 0, wins: [0, 0], winner: -1, tickN: 0, overAt: 0, skin: [0, 1], fxGood: 0,
+    elapsed: 0, mission: null, missionIndex: 0, missionWon: false, deathReasons: [],
+    assist: false,
     seed: 0, daily: false,              // 每日挑战：随机种子（0=未播种），daily 标记决定徽章/成绩文案
     gold: null,                         // 金苹果 {x, y, born}，born 以游戏时钟计
     rec: [], myMoves: 0,                // 幽灵录制：p0 每步头格 [x,y,x,y,…] 与已走步数
@@ -314,7 +354,7 @@ window.Snake = window.Snake || {};
     return null;
   };
   const gateList = () => { const lv = (Snake.levelById && Snake.levelById(S.levelId)) || (Snake.LEVELS || []).find(l => l.id === S.levelId); return (lv && lv.gates) || []; };
-  const gateOpen = g => { const pd = g.period || 4000; return ((S.now + (g.phase || 0)) % pd) < pd / 2; };
+  const gateOpen = g => { const pd = g.period || 4000; return ((S.elapsed + (g.phase || 0)) % pd) < pd / 2; };
   const gateBlocked = (x, y) => {
     for (const g of gateList()) {
       if (g.x !== x || g.y !== y || gateOpen(g)) continue;
@@ -348,8 +388,8 @@ window.Snake = window.Snake || {};
   }
   /* 经典模式沿用 2.0 的榜/存档键（不动老数据）；开了 3D 按规格 §3.7 用 iso-snake-3: 前缀，
      并把模式与关卡 id 都写进键里（同一关卡在不同模式下的成绩分开记） */
-  const bestKey = () => S.T ? 'iso-snake-3:best-' + S.mode + '-' + S.levelId : 'iso-snake-best2-' + S.mode;
-  const ghostKey = () => S.T ? 'iso-snake-3:ghost-' + S.mode + '-' + S.levelId : 'iso-snake-ghost-' + S.mode;
+  const bestKey = () => S.mission ? 'iso-snake-3:mission-best-' + S.mission.id : S.T ? 'iso-snake-3:best-' + S.mode + '-' + S.levelId : 'iso-snake-best2-' + S.mode;
+  const ghostKey = () => S.mission ? 'iso-snake-3:mission-ghost-' + S.mission.id : S.T ? 'iso-snake-3:ghost-' + S.mode + '-' + S.levelId : 'iso-snake-ghost-' + S.mode;
   function loadBest() { S.best = +safeGet(bestKey(), 0) || 0; }
   /* 本地统计（累计局数/食物/金苹果），持久化于 iso-snake-stats */
   function loadStats() { try { const o = JSON.parse(safeGet('iso-snake-stats', '{}')); S.stats = { games: +o.games || 0, food: +o.food || 0, gold: +o.gold || 0 }; } catch (e) {} }
@@ -370,10 +410,10 @@ window.Snake = window.Snake || {};
     if (K.MODES[S.mode].players === 1) {
       const p = S.pl[0], ds = dateStr(S.seed);
       return S.daily
-        ? '等距贪吃蛇 2.0 · 每日挑战' + (ds ? ' ' + ds : '') + '（种子 ' + S.seed + '）：得分 ' + p.score + '，长度 ' + p.body.length + '。来战：' + URL_HOME + '?daily=1'
-        : '等距贪吃蛇 2.0 · ' + MODE_NAME[S.mode] + '：得分 ' + p.score + '，长度 ' + p.body.length + '。来战：' + URL_HOME;
+        ? '等距贪吃蛇 V' + K.VERSION + ' · 每日挑战' + (ds ? ' ' + ds : '') + '（种子 ' + S.seed + '）：得分 ' + p.score + '，长度 ' + p.body.length + '。来战：' + URL_HOME + '?daily=1'
+        : '等距贪吃蛇 V' + K.VERSION + ' · ' + MODE_NAME[S.mode] + '：得分 ' + p.score + '，长度 ' + p.body.length + '。来战：' + URL_HOME;
     }
-    return '等距贪吃蛇 2.0 · ' + MODE_NAME[S.mode] + '：' + (S.winner >= 0 ? nm(S.winner) + ' 胜' : '平局') + '（' + S.pl.map(p => p.score).join(' : ') + '）。来战：' + URL_HOME;
+    return '等距贪吃蛇 V' + K.VERSION + ' · ' + MODE_NAME[S.mode] + '：' + (S.winner >= 0 ? nm(S.winner) + ' 胜' : '平局') + '（' + S.pl.map(p => p.score).join(' : ') + '）。来战：' + URL_HOME;
   }
   function spawn(i, p) {
     const two = K.MODES[S.mode].players === 2;
@@ -390,7 +430,7 @@ window.Snake = window.Snake || {};
       const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
       p.body = xs.map(x => ({ x, y, L: 0 })); dir = i ? K.DIRS.upLeft : K.DIRS.downRight;
     }
-    p.dir = dir; p.queue = []; p.dead = false;
+    p.dir = dir; p.queue = []; p.dead = false; p.portCool = false;
     p.moveT = 0; p.moveTGame = 0; p.moveP = 300; p.grew = false; p.tailFrom = null; p.streakAt = 0;  // 插值/连击时钟复位
   }
   /* 可放格列表（食物/金苹果共用）
@@ -419,6 +459,11 @@ window.Snake = window.Snake || {};
     return free;
   }
   function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
+    if (S.mission) {
+      const goal = S.mission.goals[S.missionIndex];
+      S.foods = goal ? [{ x: goal.x, y: goal.y, L: goal.L }] : [];
+      return;
+    }
     const want = (S.T && K.MODES[S.mode].players === 2) ? K.TUNE.foods3d : K.MODES[S.mode].foods;   // 3D 双人对战多给食物，减少「抢同一颗」的迎头撞
     if (S.foods.length >= want) return;
     const free = freeCells();
@@ -454,6 +499,7 @@ window.Snake = window.Snake || {};
     if (tsOn()) { if (!S.T) loadLevel(S.levelId || 'neon-32'); setSize(S.T.w, viewN()); }   // 3D：按关卡建层图，视口按模式定
     else { S.T = null; setSize(m.n, m.n); }   // 未开 3D：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
     if (S.daily && S.seed) setSeed(S.seed);   // 每日挑战重开：随机流复位到同一种子（同种子同局）
+    S.elapsed = 0; S.missionIndex = 0; S.missionWon = false; S.deathReasons = [];
     S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
     S.pl = [...Array(m.players)].map((_, i) => {
       const p = { score: 0, lives: m.lives, energy: 100, locked: false, hold: false, sprint: false, trail: [], streak: 0, ai: !!m.ai && i === 1,
@@ -478,8 +524,9 @@ window.Snake = window.Snake || {};
   }
   function step(now) {   // now = 游戏时钟（S.last），与 rAF 的 t 同基准，供插值/连击
     S.tickN++;
-    S.pl.forEach(p => { if (p.streak > 0 && now - p.streakAt > K.TUNE.comboWindow) p.streak = 0; });   // 连击超时衰减
-    if (S.gold && now - S.gold.born > K.TUNE.goldTtl) S.gold = null;   // 金苹果过期（游戏时钟，暂停不计时）
+    S.elapsed += tickMs();
+    S.pl.forEach(p => { if (p.streak > 0 && S.elapsed - p.streakAt > K.TUNE.comboWindow) p.streak = 0; });   // 连击超时衰减
+    if (S.gold && S.elapsed - S.gold.born > K.TUNE.goldTtl) S.gold = null;   // 金苹果过期（游戏时钟，暂停不计时）
     S.pl.forEach((p, i) => { if (p.ai && !p.dead && Snake.hooks.think) Snake.hooks.think(p, i); });
     const dt = tickMs() / 1000;
     S.pl.forEach((p, i) => {   // 冲刺耗能 / 恢复；能量归零锁定到 30
@@ -496,24 +543,24 @@ window.Snake = window.Snake || {};
       if (!mv[i]) return null;
       if (p.queue.length) p.dir = p.queue.shift();
       const h0 = p.body[0], L0 = h0.L || 0;
-      if (!S.T) return { x: h0.x + p.dir[0], y: h0.y + p.dir[1], L: 0, bad: solid(h0.x + p.dir[0], h0.y + p.dir[1]) };
+      if (!S.T) return { x: h0.x + p.dir[0], y: h0.y + p.dir[1], L: 0, bad: solid(h0.x + p.dir[0], h0.y + p.dir[1]), reason: '撞到边界' };
       const pe = p.portCool ? null : portalEdge(h0.x, h0.y, L0);   // §3.4：踩在传送门上 → 本步走传送门边
       if (pe) { p.portCool = true; bus.emit('port', { x: h0.x, y: h0.y, L: L0, tx: pe.x, ty: pe.y, tL: pe.L || 0, i }); return pe; }   // 两端都要有光效，别让人「莫名其妙被传走」
       p.portCool = false;                                         // 刚从传送门出来那一拍不许再传：否则会在两端来回弹、身体叠在自己头上把自己撞死（用户反馈「一到传送门就死」）
       const nx = h0.x + p.dir[0], ny = h0.y + p.dir[1], pk = S.T.pick(nx, ny, L0);   // §3.3：按层选落点
-      if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
-      if (gateBlocked(nx, ny)) return { x: nx, y: ny, L: L0, bad: true };   // 闸门此刻是关的 ⇒ 按墙处理（冰面/闸门互斥，顺序无所谓）
+      if (!pk) return { x: nx, y: ny, L: L0, bad: true, reason: terrainReason(nx, ny, L0) };          // 墙 / 水 / 悬崖（最小高差 > 1）
+      if (gateBlocked(nx, ny)) return { x: nx, y: ny, L: L0, bad: true, reason: '撞到关闭的闸门' };   // 闸门此刻是关的 ⇒ 按墙处理（冰面/闸门互斥，顺序无所谓）
       if (pk.layer && pk.layer.kind === 'belt') {              // 运输带：载着蛇走（拍板 ②）
         const b = beltAt(nx, ny);
         if (b) {
-          let cx2 = nx, cy2 = ny;
+          let cx2 = nx, cy2 = ny, cL = pk.h; const path = [{ x: nx, y: ny, L: cL }];
           for (let n2 = 0; n2 < 12; n2++) {
-            const mx = cx2 + b.dx, my = cy2 + b.dy, mp = S.T.pick(mx, my, L0);
-            if (!mp || gateBlocked(mx, my)) return { x: mx, y: my, L: L0, bad: true };   // 被带进墙/水/悬崖/关门 ⇒ 判负
-            cx2 = mx; cy2 = my;
+            const mx = cx2 + b.dx, my = cy2 + b.dy, mp = S.T.pick(mx, my, cL);
+            if (!mp || gateBlocked(mx, my)) return { x: mx, y: my, L: cL, bad: true, reason: '运输带推入障碍', path };   // 被带进墙/水/悬崖/关门 ⇒ 判负
+            cx2 = mx; cy2 = my; cL = mp.h; path.push({ x: mx, y: my, L: cL });
             if (!(mp.layer && mp.layer.kind === 'belt')) break;                          // 走出带面 ⇒ 停在这一格
           }
-          return { x: cx2, y: cy2, L: L0, bad: false };
+          return { x: cx2, y: cy2, L: cL, bad: false, path };
         }
       }
       if (pk.layer && pk.layer.kind === 'ice') {                    // 冰面：一步可能滑多格（§5 的 transition 表）
@@ -521,28 +568,38 @@ window.Snake = window.Snake || {};
         const slideFn = S.T.slide || (Snake.Terrain && Snake.Terrain.slide);   // 滑行表是 terrain 的模块级导出（不在层图对象上）
         const sl = slideFn(S.T, h0.x, h0.y, L0, [p.dir[0], p.dir[1]], 64);
         const last = sl.path[sl.path.length - 1];
-        if (last) { bus.emit('slide', { x: last.x, y: last.y, L: last.L, i }); return { x: last.x, y: last.y, L: last.L, bad: false, slide: sl.path }; }
+        if (last) { bus.emit('slide', { x: last.x, y: last.y, L: last.L, i }); return { x: last.x, y: last.y, L: last.L, bad: false, slide: sl.path, path: sl.path }; }
       }
       return { x: nx, y: ny, L: pk.h };
     });
     const onFood = (x, y, L) => S.foods.findIndex(f => f.x === x && f.y === y && (f.L || 0) === (L || 0));
     const eat = hs.map(h => {                        // 冰面滑行：途经格上的食物也算吃掉（§5 逐格处理）
       if (!h) return -1;
-      if (h.slide) for (const s of h.slide) { const k = onFood(s.x, s.y, s.L); if (k >= 0) return k; }
+      if (h.path) for (const s of h.path) { const k = onFood(s.x, s.y, s.L); if (k >= 0) return k; }
       return onFood(h.x, h.y, h.L);
     });
+    const same = (a, b) => a.x === b.x && a.y === b.y && (a.L || 0) === (b.L || 0);
     const hit = hs.map((h, i) => {
       if (!h) return false;
-      if (h.bad) return true;                                      // 撞墙/水/悬崖
-      const L = h.L || 0;
-      if (hs.some((o, j) => j !== i && o && !o.bad && o.x === h.x && o.y === h.y && (o.L || 0) === L)) return true;  // 对头相撞（同层才算）
-      return S.pl.some((q, j) => (mv[j] && eat[j] < 0 ? q.body.slice(0, -1) : q.body).some(s => s.x === h.x && s.y === h.y && (s.L || 0) === L));
+      if (h.bad) { S.deathReasons[i] = h.reason || '撞到地形障碍'; return true; }
+      const path = h.path || [h];
+      for (const cell of path) {
+        if (S.T && gateBlocked(cell.x, cell.y)) { S.deathReasons[i] = '撞到关闭的闸门'; return true; }
+        if (hs.some((o, j) => j !== i && o && !o.bad && (o.path || [o]).some(n => same(n, cell)))) {
+          S.deathReasons[i] = '与对手迎头相撞'; return true;
+        }
+        for (let j = 0; j < S.pl.length; j++) {
+          const body = mv[j] && eat[j] < 0 ? S.pl[j].body.slice(0, -1) : S.pl[j].body;
+          if (body.some(n => same(n, cell))) { S.deathReasons[i] = j === i ? '撞到自己的身体' : '撞到对手的身体'; return true; }
+        }
+      }
+      return false;
     });
     if (K.MODES[S.mode].players === 1) {
       const p = S.pl[0];
       if (hit[0]) {
         p.lives--; p.streak = 0;
-        if (p.lives > 0) { bus.emit('crash', { heads: [hs[0]], partial: true }); spawn(0, p); S.state = 'paused'; S.msg = '撞到了！还剩 ' + p.lives + ' 条命'; bus.emit('hud'); }
+        if (p.lives > 0) { bus.emit('crash', { heads: [hs[0]], partial: true }); spawn(0, p); S.state = 'paused'; S.msg = S.deathReasons[0] + ' · 还剩 ' + p.lives + ' 条命'; bus.emit('hud'); }
         else gameOver();
         return;
       }
@@ -552,8 +609,8 @@ window.Snake = window.Snake || {};
       if (p.sprint) { p.trail.push({ x: p.body[0].x, y: p.body[0].y, L: p.body[0].L || 0, b: performance.now() }); if (p.trail.length > 14) p.trail.shift(); }
       p.body.unshift(hs[i]);
       if (eat[i] >= 0) {
-        if (now - p.streakAt > K.TUNE.comboWindow) p.streak = 0;
-        p.streak++; p.streakAt = now;
+        if (S.elapsed - p.streakAt > K.TUNE.comboWindow) p.streak = 0;
+        p.streak++; p.streakAt = S.elapsed;
         const gain = 1 + (p.streak >= 2 ? K.TUNE.comboBonus : 0);   // 连击中每个食物 +2（×2 封顶）
         p.score += gain; if (!p.ai) S.stats.food++;   // 统计只记人类玩家（ai 模式对手蛇不计入）
         bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, pts: gain, i });
@@ -567,7 +624,7 @@ window.Snake = window.Snake || {};
       }
     });
     if (S.gold) {   // 金苹果拾取：+3 分 +30 能量，不增长、不影响连击（两蛇同 tick 踩上则先手判给 p0）
-      const gi = hs.findIndex(h => h && !h.bad && h.x === S.gold.x && h.y === S.gold.y && (h.L || 0) === (S.gold.L || 0));
+      const gi = hs.findIndex(h => h && !h.bad && (h.path || [h]).some(n => n.x === S.gold.x && n.y === S.gold.y && (n.L || 0) === (S.gold.L || 0)));
       if (gi >= 0) {
         const p = S.pl[gi];
         p.score += K.TUNE.goldScore; if (!p.ai) S.stats.gold++;
@@ -578,8 +635,14 @@ window.Snake = window.Snake || {};
       }
     }
     const eaten = new Set(eat.filter(k => k >= 0));
-    S.foods = S.foods.filter((_, k) => !eaten.has(k)); fillFoods();
-    if (eaten.size && !S.gold && rand(1000) < K.TUNE.goldChance * 1000) spawnGold(now);   // 每次真正吃到食物后掷金苹果
+    S.foods = S.foods.filter((_, k) => !eaten.has(k));
+    if (S.mission && eaten.size) {
+      S.missionIndex++;
+      bus.emit('checkpoint', { index: S.missionIndex });
+      if (S.missionIndex === S.mission.goals.length) { completeMission(); return; }
+    }
+    fillFoods();
+    if (!S.mission && eaten.size && !S.gold && rand(1000) < K.TUNE.goldChance * 1000) spawnGold(S.elapsed);   // 每次真正吃到食物后掷金苹果
     bus.emit('hud');
   }
   function gameOver() {
@@ -595,6 +658,7 @@ window.Snake = window.Snake || {};
       if (S.winner >= 0) S.wins[S.winner]++;
       bus.emit('win', { winner: S.winner });
     }
+    S.msg = S.deathReasons.filter(Boolean).join(' · ');
     S.resultText = buildResultText();
     const heads = S.pl.filter(p => p.dead).map(p => ({ x: p.body[0].x, y: p.body[0].y }));
     bus.emit('crash', { heads });
@@ -609,14 +673,15 @@ window.Snake = window.Snake || {};
   function press(i, name) { if (S.state !== 'playing') { start(); if (S.state !== 'playing') return; } if (S.pl[i]) steer(S.pl[i], name); }
   const setHold = (i, v) => { if (S.pl[i]) S.pl[i].hold = v; };
   function setMode(m) {
-    S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0);
+    if (!K.MODES[m]) return;
+    S.mission = null; S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0);
     if (tsOn()) loadLevel(S.levelId || 'neon-32'); else S.T = null;   // 开了 3D 就建层图，回经典就清掉
     loadBest(); newGame(); bus.emit('hud');
   }
   function setSkin(p, k) { S.skin[p] = k; bus.emit('hud'); }
   /* 每日挑战：固定普通模式 + 当日/自定义种子，食物序列可复现 */
   function startDaily(seed) {
-    S.mode = 'normal'; S.wins = [0, 0]; S.daily = true;
+    S.mission = null; S.mode = 'normal'; S.wins = [0, 0]; S.daily = true;
     setSeed(seed || dateSeed());
     loadBest(); newGame(); bus.emit('hud');
   }
@@ -665,16 +730,60 @@ window.Snake = window.Snake || {};
   Snake.hooks = { think: null };
   /* 远征入口：Stage 1 先用 URL / api 直达（工具栏不加控件，见 Stage 1 简报 Q3） */
   function startExpedition(id) {
-    S.mode = 'expedition'; S.wins = [0, 0]; S.daily = false; setSeed(0);
+    S.mission = null; S.mode = 'expedition'; S.wins = [0, 0]; S.daily = false; setSeed(0);
     loadLevel(id || S.levelId || 'neon-32'); loadBest(); newGame(); bus.emit('hud');
   }
   function setTerrain(on, id) {   // 地形（3D）与模式正交，任何模式都能开关（用户要求：既保留原版、也能随时切升级版）
+    S.mission = null;
+    if (S.mode === 'expedition' && !on) S.mode = 'normal';
     S.terrain = !!on;
     if (id) S.levelId = id;
-    if (S.terrain) { if (!S.T) loadLevel(S.levelId || 'neon-32'); } else S.T = null;
+    if (S.terrain) { loadLevel(S.levelId || 'neon-32'); } else S.T = null;
     S.wins = [0, 0]; loadBest(); newGame(); bus.emit('hud');
   }
-  Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, setTerrain, update };
+  function terrainReason(x, y, L) {
+    const ls = S.T && S.T.at(x, y);
+    if (!ls) return '撞到边界';
+    if (ls.some(l => l.walkable)) return '高差过大，需从台阶通过';
+    if (ls.some(l => l.kind === 'water')) return '落入水面';
+    if (ls.some(l => l.kind === 'lava')) return '进入岩浆';
+    return '撞到墙体';
+  }
+  function startMission() {
+    const lv = Snake.levelById('harbor-route');
+    S.mode = 'easy'; S.daily = false; setSeed(0); S.wins = [0, 0];
+    S.terrain = true; loadLevel(lv.id); S.mission = lv.mission;
+    loadBest(); newGame();
+  }
+  function completeMission() {
+    S.missionWon = true; S.state = 'over'; S.overAt = performance.now();
+    S.msg = '航线完成 · 六个航标全部收集';
+    S.stats.games++; persistStats();
+    const key = 'iso-snake-progress-v1';
+    let progress; try { progress = JSON.parse(safeGet(key, '{}')); } catch (e) {}
+    if (!progress || typeof progress !== 'object' || Array.isArray(progress)) progress = {};
+    const old = progress[S.mission.id];
+    const ms = Math.round(S.elapsed);
+    progress[S.mission.id] = { completed: true, bestMs: old && old.bestMs > 0 ? Math.min(old.bestMs, ms) : ms };
+    safeSet(key, JSON.stringify(progress));
+    S.resultText = '等距贪吃蛇 V' + K.VERSION + ' · 港口航线完成 · ' + (ms / 1000).toFixed(1) + ' 秒';
+    bus.emit('win', { winner: 0, mission: true }); bus.emit('hud');
+  }
+  // 与判定共用地形选层；只提示当前已排队方向的下一格，不替玩家决策。
+  function preview(i = 0) {
+    const p = S.pl[i]; if (!p) return null;
+    const h = p.body[0], d = p.queue[0] || p.dir;
+    const pe = S.T && !p.portCool && portalEdge(h.x, h.y, h.L || 0);
+    if (pe) return { ...pe, safe: !S.pl.some(q => q.body.slice(0, -1).some(n => n.x === pe.x && n.y === pe.y && (n.L || 0) === (pe.L || 0))), portal: true };
+    const x = h.x + d[0], y = h.y + d[1];
+    const pk = S.T ? S.T.pick(x, y, h.L || 0) : null;
+    const L = pk ? pk.h : h.L || 0;
+    const terrainOk = S.T ? !!pk && !gateBlocked(x, y) : !solid(x, y);
+    const occupied = S.pl.some(q => q.body.slice(0, -1).some(n => n.x === x && n.y === y && (n.L || 0) === L));
+    return { x, y, L, safe: terrainOk && !occupied };
+  }
+  function restart() { newGame(); }
+  Snake.api = { startMission, preview, restart, newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, setTerrain, update };
 })();
 </script>
 <script>
@@ -1042,6 +1151,95 @@ window.Snake = window.Snake || {};
       belts: [{ x: 8, y: 22, dx: 1, dy: 0 }, { x: 9, y: 22, dx: 1, dy: 0 }, { x: 10, y: 22, dx: 1, dy: 0 }, { x: 11, y: 22, dx: 1, dy: 0 }, { x: 12, y: 22, dx: 1, dy: 0 }, { x: 22, y: 8, dx: 0, dy: 1 }, { x: 22, y: 9, dx: 0, dy: 1 }, { x: 22, y: 10, dx: 0, dy: 1 }, { x: 22, y: 11, dx: 0, dy: 1 }, { x: 22, y: 12, dx: 0, dy: 1 }]
     }
   ];
+
+  // 紧凑路线关卡：同桥上下层、跨水桥与高台组成六段航线。
+  LEVELS.push({
+  "id": "harbor-route",
+  "name": "港口航线 18×18",
+  "biome": "grey",
+  "map": [
+    "##################",
+    "#.......~~.......#",
+    "#.......~~.......#",
+    "#.......~~..111..#",
+    "#.1bbbb1~~..121..#",
+    "#.......~~..111..#",
+    "#.......~~.......#",
+    "#.....1BBBB1.....#",
+    "#.....1BBBB1.....#",
+    "#.......~~.......#",
+    "#.......~~.......#",
+    "#.......~~.......#",
+    "#.......~~.......#",
+    "#..@....~~.......#",
+    "#.......~~.......#",
+    "#.......~~.......#",
+    "#.......~~...$...#",
+    "##################"
+  ],
+  "foods": 1,
+  "spawns": [
+    {
+      "x": 3,
+      "y": 13,
+      "dir": "downRight"
+    },
+    {
+      "x": 13,
+      "y": 15,
+      "dir": "upLeft"
+    }
+  ],
+  "rulesetVersion": 2,
+  "mission": {
+    "id": "harbor-route-1",
+    "name": "港口航线",
+    "goals": [
+      {
+        "x": 6,
+        "y": 13,
+        "L": 0,
+        "label": "码头补给",
+        "tip": "沿码头前进，收集第一个航标。"
+      },
+      {
+        "x": 4,
+        "y": 4,
+        "L": 0,
+        "label": "桥下通行",
+        "tip": "从桥的侧面进入下层；桥上桥下属于不同路线。"
+      },
+      {
+        "x": 4,
+        "y": 4,
+        "L": 2,
+        "label": "登上桥面",
+        "tip": "绕到桥两端的台阶，再走上桥面。"
+      },
+      {
+        "x": 9,
+        "y": 7,
+        "L": 2,
+        "label": "跨越水渠",
+        "tip": "经台阶登上跨水桥，水面不可通行。"
+      },
+      {
+        "x": 13,
+        "y": 4,
+        "L": 2,
+        "label": "高台观测",
+        "tip": "从低台阶登上高台，高差超过一层不能直接通过。"
+      },
+      {
+        "x": 13,
+        "y": 13,
+        "L": 0,
+        "label": "返回东港",
+        "tip": "沿东岸返回终点。冲刺更快，也需要提前转向。"
+      }
+    ]
+  }
+});
 
   const byId = {};
   LEVELS.forEach(l => { byId[l.id] = l; });
@@ -1729,7 +1927,7 @@ window.Snake = window.Snake || {};
      几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
   const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: 1 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
-  const BUILD = 'stage5.3';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
+  const BUILD = 'v' + K.VERSION;   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
   const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
     const m = /(^|[?&])q=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
@@ -2056,7 +2254,7 @@ window.Snake = window.Snake || {};
     // 挡在蛇前面的高地形靠近时半透明：别把蛇和地图糊住（用户反馈：墙体遮住地图）
     let al = 1;
     const hd = S.pl[0] && S.pl[0].body[0];
-    if (hd && top > liftAt(hd.x, hd.y, hd.L) + 2 && (o.x + o.y) > (hd.x + hd.y) &&
+    if (hd && top > liftAt(hd.x, hd.y, hd.L) + 2 && (o.x + o.y) >= (hd.x + hd.y) &&
         Math.abs(o.x - hd.x) + Math.abs(o.y - hd.y) <= 3) al = .34;
     if (al < 1) ctx.globalAlpha = al;
     if (t.kind === 'deck') {   // 桥面：地面投影 + 两根斜柱（简报 Q5）
@@ -2202,7 +2400,7 @@ window.Snake = window.Snake || {};
   const MM_C = { ground: '#2C3757', deck: '#54637F', water: '#16324F', portal: '#7FD4FF', food: '#F2B33D', head: '#5DCAA5', frame: 'rgba(255,255,255,.5)' };
   function mmUpdate(t) {
     if (!mmCtx) return;
-    const on = !!S.T && S.mode === 'expedition';
+    const on = !!S.T && (S.mode === 'expedition' || !!S.mission);
     if (document.body.classList.contains('mm') !== on) document.body.classList.toggle('mm', on);
     if (!on || t - mmT < 200) return;   // 4~8Hz：别每帧重绘（规格 §4）
     mmT = t;
@@ -2281,7 +2479,7 @@ window.Snake = window.Snake || {};
     drawBoard();
     /* 周期闸门的能量帘：关=满高发亮，开=收进地面。用 core 的同一个时钟（S.now），保证「看见的」与「判定的」一致。 */
     if (S.T && Snake.gates) {
-      const gn = S.now || t;
+      const gn = S.elapsed;
       for (const g of Snake.gates.list()) {
         const gx = PX(g.x, g.y), gy = PY(g.x, g.y) + K.HH;
         if (gx < -K.TW || gx > S.W + K.TW || gy < -K.TH * 4 || gy > S.H + K.TH * 4) continue;
@@ -2306,8 +2504,8 @@ window.Snake = window.Snake || {};
       }
       if (!p.dead) glowAt(PX(arr[0].x, arr[0].y), PY(arr[0].x, arr[0].y) + K.HH - 9 - (arr[0].z || 0), 22, p.sprint ? pal.glow : K.SK[S.skin[i]].body[1], .5);
     });
-    S.foods.forEach(f => { const sx = PX(f.x, f.y), sy = PY(f.x, f.y) - liftOf(f.x, f.y); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); glowAt(sx, sy + K.HH, 14 + Math.sin(t / 300) * 4, fg, .4); });   // 食物辉光始终保留（Stage 0）
-    if (S.gold) { const sx = PX(S.gold.x, S.gold.y), sy = PY(S.gold.x, S.gold.y) - liftOf(S.gold.x, S.gold.y); diamond(sx, sy + K.HH, K.HW * 1.8, K.HH * 1.8, 'rgba(242,179,61,.22)'); glowAt(sx, sy + K.HH, 18 + Math.sin(t / 200) * 5, '#F2B33D', .55); }   // 金苹果地板光 + 辉光（跟着台面高度走）
+    S.foods.forEach(f => { const sx = PX(f.x, f.y), sy = PY(f.x, f.y) - liftAt(f.x, f.y, f.L); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); glowAt(sx, sy + K.HH, 14 + Math.sin(t / 300) * 4, fg, .4); });   // 食物辉光始终保留（Stage 0）
+    if (S.gold) { const sx = PX(S.gold.x, S.gold.y), sy = PY(S.gold.x, S.gold.y) - liftAt(S.gold.x, S.gold.y, S.gold.L); diamond(sx, sy + K.HH, K.HW * 1.8, K.HH * 1.8, 'rgba(242,179,61,.22)'); glowAt(sx, sy + K.HH, 18 + Math.sin(t / 200) * 5, '#F2B33D', .55); }   // 金苹果地板光 + 辉光（跟着台面高度走）
     refreshPortals();   // 传送门呼吸光：让「脚下就是门」一眼可见（关卡变了才重算位置）
     for (const q of PORTALS) {
       const qx = PX(q.x, q.y), qy = PY(q.x, q.y) - liftAt(q.x, q.y, q.L);
@@ -2385,21 +2583,21 @@ window.Snake = window.Snake || {};
       }
     }
     S.pl.forEach((p, i) => PTS[i].forEach((s, j) => pushItem(s.x, s.y, i, j, p.body.length, j === 0, p.dead, false, false, null, s.z || 0, p.body[j] ? (p.body[j].L || 0) : 0)));
-    S.foods.forEach(f => pushItem(f.x, f.y, 0, 0, 0, false, false, true, false, null, liftOf(f.x, f.y), f.L || 0));   // 层号必须一起传：否则同格地形块的排序键更高，会把豆子盖住
-    if (S.gold) pushItem(S.gold.x, S.gold.y, 0, 0, 0, false, false, false, true, null, liftOf(S.gold.x, S.gold.y), S.gold.L || 0);
+    S.foods.forEach(f => pushItem(f.x, f.y, 0, 0, 0, false, false, true, false, null, liftAt(f.x, f.y, f.L), f.L || 0));   // 层号必须一起传：否则同格地形块的排序键更高，会把豆子盖住
+    if (S.gold) pushItem(S.gold.x, S.gold.y, 0, 0, 0, false, false, false, true, null, liftAt(S.gold.x, S.gold.y, S.gold.L), S.gold.L || 0);
     items.length = ic;
     items.sort((a, b) => (a.x + a.y) - (b.x + b.y) || (a.lyr || 0) - (b.lyr || 0) || (a.terr ? 0 : 1) - (b.terr ? 0 : 1)); // 画家算法：后→前；同格低层先画、地形先画（规格 §4 深度键：x+y → layer → 类型）
     let occl = false;   // 有高地形挡在蛇头前面：最后补一层半透明轮廓（规格 §4）
     const hd0 = S.pl[0] && S.pl[0].body[0];
     for (const o of items) {
       if (o.terr) {
-        if (hd0 && !occl && o.terr.h * BLK > liftAt(hd0.x, hd0.y, hd0.L) + 2 && (o.x + o.y) > (hd0.x + hd0.y) &&
+        if (hd0 && !occl && o.terr.h * BLK > liftAt(hd0.x, hd0.y, hd0.L) + 2 && (o.x + o.y) >= (hd0.x + hd0.y) &&
           Math.abs(o.x - hd0.x) + Math.abs(o.y - hd0.y) <= 2) occl = true;
         drawTerr(o); continue;   // 地形块（远征）：墙/高台/桥面，按层高抬升
       }
       const zb = o.zb || 0;                    // 站在高台上的实体整体抬升（经典模式恒 0）
       if (o.gold) {   // 金苹果：金色立方，最后 2s 闪烁告警（游戏时钟，暂停不闪走）；辉光已在加法通道绘
-        const remaining = K.TUNE.goldTtl - (S.last - S.gold.born);
+        const remaining = K.TUNE.goldTtl - (S.elapsed - S.gold.born);
         const sx = PX(o.x, o.y), sy = PY(o.x, o.y) - zb;
         ctx.globalAlpha = remaining < 2000 && Math.floor(remaining / 150) % 2 === 0 ? .3 : 1;
         diamond(sx, sy + K.HH, K.HW * .55, K.HH * .55, 'rgba(0,0,0,.25)');
@@ -2426,6 +2624,22 @@ window.Snake = window.Snake || {};
       }
       ctx.globalAlpha = 1;
     }
+    if (S.assist && S.state !== 'over') {
+      S.pl.forEach((p, i) => {
+        if (p.ai) return;
+        const n = api.preview(i); if (!n) return;
+        const px = PX(n.x, n.y), py = PY(n.x, n.y) + K.HH - liftAt(n.x, n.y, n.L);
+        ctx.strokeStyle = n.safe ? '#9cf3cf' : '#ff8e99'; ctx.lineWidth = 1.3;
+        ctx.beginPath(); ctx.moveTo(px, py - K.HH * .75); ctx.lineTo(px + K.HW * .75, py);
+        ctx.lineTo(px, py + K.HH * .75); ctx.lineTo(px - K.HW * .75, py); ctx.closePath(); ctx.stroke();
+      });
+    }
+    // 航标独立于实体遮挡：环形提示指明目标所在的层，桥下也能定位。
+    if (S.mission && S.foods[0]) {
+      const g = S.foods[0], px = PX(g.x, g.y), py = PY(g.x, g.y) - liftAt(g.x, g.y, g.L);
+      ctx.strokeStyle = '#ffe5a0'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(px, py, K.HW * .8, K.HH * .8, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#ffe5a0'; ctx.font = '600 10px system-ui'; ctx.textAlign = 'center'; ctx.fillText(String(S.missionIndex + 1), px, py - 15);
+    }
     S.pl.forEach((p, i) => { if (p.sprint) Snake.Fx.trail(p, i, dt); }); // 冲刺拖尾（lowFx 自动关）
     Snake.Fx.update(dt);
     Snake.Fx.draw(ctx);
@@ -2437,11 +2651,12 @@ window.Snake = window.Snake || {};
     });
     if (sh > 0) ctx.restore();
     const statsLine = (S.daily ? '种子 ' + S.seed + ' · ' : '') + '累计 ' + S.stats.games + ' 局 · ' + S.stats.food + ' 食物 · ' + S.stats.gold + ' 金苹果';   // 结算第三行
-    if (S.state === 'ready') overlay(
+    const domOverlay = Snake.Experience && Snake.Experience.isOpen();
+    if (!domOverlay && S.state === 'ready') overlay(
       S.daily ? '每日挑战 · ' + (K.dateStr(S.seed) || ('种子 ' + S.seed)) : pk ? (K.MODES[S.mode].ai ? '人机对战 · CR' : '双人对战') : '等距贪吃蛇',
       pk ? (K.MODES[S.mode].ai ? 'WASD 或方向键 · E/Shift 冲刺 · 点击开始' : 'P1 WASD·E 冲刺   P2 方向键·Enter 冲刺') : S.daily ? '同一种子 · 同一局 · 按方向键开始' : '点击画面或按方向键开始');
-    else if (S.state === 'paused') overlay(S.msg || '已暂停', '点击画面或按空格继续');
-    else if (S.state === 'over') overlay(
+    else if (!domOverlay && S.state === 'paused') overlay(S.msg || '已暂停', '点击画面或按空格继续');
+    else if (!domOverlay && S.state === 'over') overlay(
       S.msg || (pk ? (S.winner < 0 ? '平局' : K.MODES[S.mode].ai ? (S.winner ? 'AI 获胜' : '你赢了') : 'P' + (S.winner + 1) + ' 获胜') : '游戏结束 · ' + S.pl[0].score + ' 分'),
       '点击画面重新开始' + (S.daily ? ' · 工具栏可复制成绩' : ''),
       statsLine);
@@ -2716,14 +2931,17 @@ window.Snake = window.Snake || {};
     $('fs').addEventListener('click', fullscreen);
 
     addEventListener('keydown', e => {
+      if (Snake.Experience && Snake.Experience.captureKey(e)) return;
+      if (e.target && /^(SELECT|INPUT|TEXTAREA|BUTTON)$/.test(e.target.tagName)) return;
+      if (e.repeat) return;
       if (e.code === 'Space' || e.code === 'KeyP') { e.preventDefault(); api.togglePause(); return; }
       const sp = SPKEYS[e.code];
       if (sp !== undefined) { e.preventDefault(); if (S.state !== 'playing') api.start(); api.setHold(S.mode === 'pk' ? sp : 0, true); return; }
       const k1 = K1[e.code], k2 = K2[e.code];
       if (k1 || k2) { e.preventDefault(); api.press(k1 ? 0 : (S.mode === 'pk' ? 1 : 0), k1 || k2); }
     });
-    addEventListener('keyup', e => { const s = SPKEYS[e.code]; if (s !== undefined) api.setHold(S.mode === 'pk' ? s : 0, false); });
-    addEventListener('blur', () => S.pl.forEach(p => p.hold = false));
+    addEventListener('keyup', e => { if (Snake.Experience) Snake.Experience.releaseKey(e); const s = SPKEYS[e.code]; if (s !== undefined) api.setHold(S.mode === 'pk' ? s : 0, false); });
+    addEventListener('blur', () => { S.pl.forEach(p => p.hold = false); if (S.state === 'playing') api.togglePause(); });
     document.addEventListener('visibilitychange', () => { // 切后台自动暂停，回来不会盲走暴毙
       if (document.hidden) { S.pl.forEach(p => p.hold = false); if (S.state === 'playing') api.togglePause(); }
     });
@@ -2747,6 +2965,7 @@ window.Snake = window.Snake || {};
     document.querySelectorAll('.mode button[data-m]').forEach(b => b.addEventListener('click', () => {
       b.blur(); api.setMode(b.dataset.m); syncModeUi();
     }));
+    Snake.UI.syncModeUi = syncModeUi;
     syncModeUi(); // ?mode= 进入时同样生效（沉浸布局/滚动锁定不再依赖点击）
     drawSwatches();
 
@@ -2809,39 +3028,31 @@ window.Snake = window.Snake || {};
       if (S.ghostOn) toast('幽灵 = 你破纪录的那局' + (S.ghostMeta ? '（' + S.ghostMeta.score + ' 分 · ' + S.ghostMeta.date + '）' : ''));
     });
     ghostLabel();
-    /* 3D 地形开关：与模式正交——普通/双人/人机都能开，关掉就是 2.0 的原版玩法（用户要求两条线并行） */
-    const terrBtn = $('terrain');
-    const terrLabel = () => { if (!terrBtn) return; terrBtn.textContent = '3D'; terrBtn.classList.toggle('off', !S.terrain); terrBtn.title = '3D 地形：' + (S.terrain ? '开（' + (S.levelName || S.levelId) + '）' : '关'); };
-    if (terrBtn) {
-      terrBtn.addEventListener('click', () => {
-        api.setTerrain(!S.terrain);
-        terrLabel(); syncModeUi();
-        toast(S.terrain ? '3D 地形：开 · ' + (S.levelName || S.levelId) : '3D 地形：关 · 回到原版玩法');
-    /* 3D 关卡下拉：只在 3D 模式下出现；列表直接取关卡注册表（test-24 是自动化测试的最小图，故意不列） */
-    const lvSel = $('lv');
-    const lvSync = () => { if (!lvSel) return; lvSel.value = S.levelId; lvSel.style.display = S.terrain ? 'inline-block' : 'none'; };
+    /* 关卡选择只初始化一次，换图走完整 reset，防止旧蛇身和新层图混用。 */
+    const terrBtn = $('terrain'), lvSel = $('lv');
+    function terrainSync() {
+      if (terrBtn) { terrBtn.textContent = '地形'; terrBtn.classList.toggle('off', !S.terrain); terrBtn.title = '地形：' + (S.terrain ? (S.levelName || S.levelId) : '关'); }
+      if (lvSel) { lvSel.value = S.levelId; lvSel.style.display = S.terrain ? 'inline-block' : 'none'; }
+      ghostLabel();
+    }
     if (lvSel) {
       (Snake.LEVELS || []).filter(l => l.id !== 'test-24').forEach(l => {
-        const TAG = { 'harbor-32': '集装箱/栈桥', 'ridges-40': '断崖带', 'neon-32': '楼块/高架', 'ruins-32': '台阶/断柱', 'lava-32': '岩浆湖', 'ice-32': '冰湖滑行', 'station-32': '闸门/运输带' };
-        const o = document.createElement('option'); o.value = l.id; o.textContent = l.name + (TAG[l.id] ? ' · ' + TAG[l.id] : ''); lvSel.appendChild(o);
+        const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; lvSel.appendChild(o);
       });
       lvSel.addEventListener('change', () => {
-        api.loadLevel(lvSel.value);
-        const lv = Snake.levelById && Snake.levelById(lvSel.value);
-        toast('3D 关卡：' + ((lv && lv.name) || lvSel.value));
+        api.setTerrain(true, lvSel.value); lvSel.blur();
+        toast('关卡：' + S.levelName); terrainSync();
       });
-      bus.on('resize', lvSync);
-    bus.on('themeChange', () => {   // 换主题时结构色会跟着变，明确说一句，免得以为没生效
-      const th = Snake.theme && Snake.theme.current;
-      if (S.terrain && th) toast('主题：' + th.name + ' · 3D 地形已跟随');
+    }
+    if (terrBtn) terrBtn.addEventListener('click', () => {
+      api.setTerrain(!S.terrain); terrBtn.blur(); terrainSync(); syncModeUi();
+      toast(S.terrain ? '地形：' + S.levelName : '经典棋盘');
     });
-      if (terrBtn) terrBtn.addEventListener('click', () => setTimeout(lvSync, 0));   // 开关 3D 后刷新可见性
-      lvSync();
-    }
-        terrBtn.blur();
-      });
-      terrLabel();
-    }
+    bus.on('hud', terrainSync);
+    bus.on('themeChange', () => {
+      if (S.terrain && Snake.theme.current) toast('主题：' + Snake.theme.current.name);
+    });
+    terrainSync();
     function fallbackCopy(txt) {
       try {
         const ta = document.createElement('textarea');
@@ -2858,7 +3069,7 @@ window.Snake = window.Snake || {};
     $('copy').addEventListener('click', e => {
       e.currentTarget.blur();
       const home = 'https://kkkk16689.github.io/isometric-snake/';
-      const live = '等距贪吃蛇 2.0 · ' + (S.daily ? '每日挑战 种子 ' + S.seed : K.MODE_NAME[S.mode]) + '（进行中，得分 ' + (S.pl[0] ? S.pl[0].score : 0) + '）。来战：' + home + (S.daily ? '?daily=1' : '');
+      const live = '等距贪吃蛇 V' + K.VERSION + ' · ' + (S.daily ? '每日挑战 种子 ' + S.seed : K.MODE_NAME[S.mode]) + '（进行中，得分 ' + (S.pl[0] ? S.pl[0].score : 0) + '）。来战：' + home + (S.daily ? '?daily=1' : '');
       copyText(S.state === 'over' && S.resultText ? S.resultText : live)
         .then(ok => toast(ok ? '成绩已复制，去粘贴分享吧' : '复制失败：请截图分享'));
     });
@@ -2886,6 +3097,134 @@ window.Snake = window.Snake || {};
 })();
 </script>
 <script>
+/* experience.js — 主页、路线进度与独立方向练习；不写入蛇身或修改规则。 */
+window.Snake = window.Snake || {};
+(function () {
+  'use strict';
+  const { S, K, api, bus } = Snake, $ = id => document.getElementById(id);
+  let panel = null, page = '', training = 0, tx = 3, ty = 3, holdTimer = 0, lastState = '', hudAt = 0;
+  const steps = ['up', 'right', 'down', 'left'];
+  const arrows = { up: '↗', right: '↘', down: '↙', left: '↖' };
+  const keyNames = { up: '↑ / W', right: '→ / D', down: '↓ / S', left: '← / A' };
+  const keyDir = { ArrowUp: 'up', KeyW: 'up', ArrowRight: 'right', KeyD: 'right', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left' };
+  const sprintKeys = ['ShiftLeft', 'ShiftRight', 'KeyE', 'Enter'];
+  function pause() { S.pl.forEach(p => api.setHold(S.pl.indexOf(p), false)); if (S.state === 'playing') api.togglePause(); }
+  function cancelHold() { clearTimeout(holdTimer); holdTimer = 0; }
+  function close() { document.body.classList.remove('settings-open'); if ($('settings')) $('settings').setAttribute('aria-expanded', 'false'); document.querySelectorAll('main > :not(#experience)').forEach(el => el.inert = false); cancelHold(); page = ''; panel.hidden = true; panel.innerHTML = ''; lastState = ''; }
+  function open(name, body) {
+    pause(); document.body.classList.remove('settings-open'); $('settings').setAttribute('aria-expanded', 'false'); document.querySelectorAll('main > :not(#experience)').forEach(el => el.inert = true); page = name; panel.hidden = false;
+    panel.innerHTML = '<section class="experience-card" role="dialog" aria-modal="true" aria-label="' + (name === 'home' ? '游戏主页' : name === 'training' ? '方向练习' : '对局信息') + '">' + body + '</section>';
+    const focus = panel.querySelector('button'); if (focus) focus.focus();
+  }
+  function button(id, text, cls = '') { return '<button id="' + id + '" class="' + cls + '">' + text + '</button>'; }
+  function bind(id, fn) { const el = $(id); if (el) el.addEventListener('click', () => { el.blur(); fn(); }); }
+  function record() {
+    try { const p = JSON.parse(K.safeGet('iso-snake-progress-v1', '{}')); return p && p['harbor-route-1']; } catch (e) { return null; }
+  }
+  function play(mode, terrain) { close(); api.setMode(mode); api.setTerrain(terrain); Snake.UI.syncModeUi(); }
+  function home() {
+    const p = record(), done = p && p.completed && Number.isFinite(p.bestMs) && p.bestMs > 0;
+    open('home', '<p class="eyebrow">ISOMETRIC SNAKE · V' + K.VERSION + '</p><h2>转个方向，<br>走出新的路线。</h2><p class="intro">穿过桥下，登上高台。用路线和节奏，赢下这场等距冒险。</p>' +
+      '<button id="play-mission" class="feature-card"><span class="card-icon">↗</span><span><small>推荐 · 六段路线挑战</small><strong>港口航线</strong><em>' + (done ? '已通关 · 最佳 ' + (p.bestMs / 1000).toFixed(1) + ' 秒' : '桥下通行 / 登桥 / 跨水 / 高台') + '</em></span><b>开始 →</b></button>' +
+      '<div class="choice-grid">' + button('play-classic', '<strong>经典练手</strong><small>慢速 · 三条命</small>') + button('play-terrain', '<strong>自由探索</strong><small>地形地图 · 自选路线</small>') + button('play-ai', '<strong>挑战 CR</strong><small>三档 AI · 同场竞速</small>') + button('play-pk', '<strong>双人对战</strong><small>同屏 · WASD / 方向键</small>') + '</div>' +
+      '<div class="card-footer">' + button('learn', '↗ 方向练习') + button('back-game', S.state === 'paused' ? '返回暂停中的对局' : '返回棋盘') + '</div><p class="credits">作者：' + K.AUTHOR + ' · 本地保存进度 · 零依赖 Canvas</p>');
+    bind('play-mission', () => { close(); api.startMission(); Snake.UI.syncModeUi(); });
+    bind('play-classic', () => play('easy', false)); bind('play-terrain', () => play('easy', true));
+    bind('play-ai', () => play('ai', false)); bind('play-pk', () => play('pk', false));
+    bind('learn', trainingStart); bind('back-game', close);
+  }
+  function practiceSvg() {
+    let svg = '<svg viewBox="0 0 280 154" role="img" aria-label="方向练习棋盘">';
+    for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) {
+      const px = 140 + (x - y) * 18, py = 13 + (x + y) * 9;
+      svg += '<path d="M' + px + ',' + py + 'l18,9 -18,9 -18,-9Z" fill="#0c1c2e" stroke="#234151"/>';
+    }
+    const px = 140 + (tx - ty) * 18, py = 13 + (tx + ty) * 9;
+    return svg + '<path d="M' + px + ',' + (py - 7) + 'l16,8 -16,8 -16,-8Z" fill="#83f3ce"/><path d="M' + (px - 16) + ',' + (py + 1) + 'v9l16,8v-9Z" fill="#218974"/><path d="M' + (px + 16) + ',' + (py + 1) + 'v9l-16,8v-9Z" fill="#35b99c"/></svg>';
+  }
+  function trainingStart() { training = 0; tx = ty = 3; showTraining(); }
+  function showTraining(message) {
+    const finished = training >= 5, dir = steps[training];
+    open('training', '<p class="eyebrow">方向练习 · ' + Math.min(training + 1, 5) + ' / 5</p><h2>' + (finished ? '准备好出发了。' : training === 4 ? '按住冲刺，掌握节奏。' : '向' + ({up:'右上',right:'右下',down:'左下',left:'左上'}[dir]) + '走一步。') + '</h2>' + practiceSvg() +
+      '<p id="training-message" class="training-message" role="status">' + (message || (finished ? '方向练习完成。正式对局不能直接掉头，转向可提前排队。' : training === 4 ? '按住 Shift / E 或下方冲刺键半秒。能量耗尽后需要回充。' : '按 ' + keyNames[dir] + '，或点击 ' + arrows[dir] + '。方块会沿棋盘方向移动。')) + '</p>' +
+      '<div class="training-controls">' + steps.map(d => button('train-' + d, arrows[d], dir === d ? 'primary' : '')).join('') + button('train-sprint', '冲刺', training === 4 ? 'primary' : '') + '</div><div class="card-footer">' + button('training-back', '返回棋盘') + (finished ? button('training-play', '开始港口航线', 'primary') : button('training-skip', '返回主页')) + '</div>');
+    steps.forEach(d => bind('train-' + d, () => practice(d)));
+    const sp = $('train-sprint'); sp.addEventListener('pointerdown', e => { e.preventDefault(); try { sp.setPointerCapture(e.pointerId); } catch (e) {} beginHold(); });
+    ['pointerup','pointercancel','lostpointercapture'].forEach(ev => sp.addEventListener(ev, cancelHold));
+    bind('training-back', close); bind('training-skip', home);
+    bind('training-play', () => { close(); api.startMission(); Snake.UI.syncModeUi(); });
+  }
+  function practice(dir) {
+    if (training >= 4) return;
+    if (dir !== steps[training]) { $('training-message').textContent = '这次请按 ' + keyNames[steps[training]] + '，对应 ' + arrows[steps[training]] + '。'; return; }
+    const d = K.SCREEN[dir]; tx += d[0]; ty += d[1]; training++; showTraining();
+  }
+  function beginHold() {
+    if (training !== 4 || holdTimer) return;
+    $('training-message').textContent = '正在冲刺……继续按住';
+    holdTimer = setTimeout(() => { holdTimer = 0; if (page !== 'training' || training !== 4) return; training = 5; K.safeSet('iso-snake-tutorial-v1', 'done'); showTraining(); }, 500);
+  }
+  function captureKey(e) {
+    if (!panel) return false;
+    if (page === 'state' && !e.repeat && (keyDir[e.code] || e.code === 'Space' || e.code === 'KeyP')) { e.preventDefault(); if (S.state === 'over') api.restart(); close(); api.start(); if (keyDir[e.code]) api.press(0, keyDir[e.code]); return true; }
+    if (e.code === 'Escape') { e.preventDefault(); if (page) close(); else if (document.body.classList.contains('settings-open')) settings(); else home(); return true; }
+    if (document.body.classList.contains('settings-open')) { if ((!e.target || !/^(SELECT|INPUT|TEXTAREA|BUTTON)$/.test(e.target.tagName)) && (keyDir[e.code] || sprintKeys.includes(e.code) || e.code === 'Space' || e.code === 'KeyP')) e.preventDefault(); return true; }
+    if (!page) return false;
+    if (page === 'training' && !e.repeat) { if (keyDir[e.code]) practice(keyDir[e.code]); else if (sprintKeys.includes(e.code)) beginHold(); }
+    if (keyDir[e.code] || sprintKeys.includes(e.code) || e.code === 'Space' || e.code === 'KeyP') e.preventDefault();
+    return true;
+  }
+  function releaseKey(e) { if (sprintKeys.includes(e.code)) cancelHold(); }
+  function settings() {
+    const on = !document.body.classList.contains('settings-open'); pause(); close(); document.body.classList.toggle('settings-open', on);
+    $('settings').setAttribute('aria-expanded', String(on));
+  }
+  function statePanel() {
+    if (page === 'home' || page === 'training' || document.body.classList.contains('settings-open')) return;
+    if (S.state === lastState) return; lastState = S.state;
+    if (S.state === 'playing') { if (page === 'state') close(); return; }
+    const over = S.state === 'over', ready = S.state === 'ready';
+    const title = S.missionWon ? '港口航线，完成！' : over ? '游戏结束。' : ready ? (S.mission ? '港口航线' : '准备出发') : '稍作休息。';
+    const goal = S.mission && S.mission.goals[S.missionIndex];
+    const detail = S.missionWon ? '六个航标全部收集 · 用时 ' + (S.elapsed / 1000).toFixed(1) + ' 秒' : over ? (S.msg || (K.MODES[S.mode].players === 2 ? (S.winner < 0 ? '平局' : K.nm(S.winner) + ' 获胜') : '游戏结束')) : goal ? goal.tip : '↑/W ↗　→/D ↘　↓/S ↙　←/A ↖';
+    open('state', '<p class="eyebrow">' + (S.mission ? 'HARBOR ROUTE' : 'ISOMETRIC SNAKE') + '</p><h2>' + title + '</h2><p class="intro">' + detail + '</p>' +
+      (over ? '<p class="result-score">' + S.pl[0].score + '<small>得分 · 已收集 ' + (S.mission ? S.missionIndex + '/' + S.mission.goals.length + ' 航标' : '本局长度 ' + S.pl[0].body.length) + '</small></p>' : '<p class="micro">' + (S.mission ? '三条命 · 依次收集六个航标 · 小地图显示当前目标' : '按住 Shift / E 冲刺，空格暂停。') + '</p>') +
+      '<div class="card-footer">' + button('state-start', over ? '再试一次' : ready ? '开始' : '继续', 'primary') + button('state-home', '返回主页') + button('state-train', '方向练习') + '</div>');
+    lastState = S.state;
+    bind('state-start', () => { close(); if (over) api.restart(); api.start(); });
+    bind('state-home', home); bind('state-train', trainingStart);
+  }
+  function tick() {
+    if (!panel) return;
+    if (performance.now() - hudAt > 100) {
+      hudAt = performance.now(); const mh = $('mission-hud'), goal = S.mission && S.mission.goals[S.missionIndex];
+      mh.hidden = !S.mission;
+      if (S.mission) { $('mission-title').textContent = goal ? (S.missionIndex + 1) + '/6 · ' + goal.label : '6/6 · 航线完成'; $('mission-tip').textContent = goal ? goal.tip : '最佳用时已保存在本机'; $('mission-time').textContent = (S.elapsed / 1000).toFixed(1) + ' 秒'; }
+      $('pause').setAttribute('aria-label', S.state === 'playing' ? '暂停' : '继续');
+    }
+    statePanel();
+  }
+  function init() {
+    panel = $('experience'); if (!panel) return;
+    document.body.classList.add('experience-enabled');
+    S.assist = K.safeGet('iso-snake-assist', '1') !== '0';
+    bind('menu', home); bind('help', trainingStart); bind('settings', settings);
+    bind('pause', () => { if (page === 'home' || page === 'training') return; close(); api.togglePause(); });
+    bind('restart', () => { close(); api.restart(); });
+    const assist = document.createElement('button'); assist.id = 'assist'; assist.textContent = '落点提示'; assist.setAttribute('aria-pressed', String(S.assist));
+    document.querySelector('.mode').appendChild(assist);
+    assist.addEventListener('click', () => { S.assist = !S.assist; K.safeSet('iso-snake-assist', S.assist ? '1' : '0'); assist.setAttribute('aria-pressed', String(S.assist)); assist.blur(); });
+    const oldTick = Snake.uiTick; Snake.uiTick = () => { if (oldTick) oldTick(); tick(); };
+    addEventListener('blur', cancelHold);
+    const qs = new URLSearchParams(location.search);
+    if (![...qs.keys()].some(k => ['mode','terrain','level','daily','seed','autostart'].includes(k))) home();
+    tick();
+  }
+  Snake.Experience = { init, captureKey, releaseKey, isOpen: () => !!page || document.body.classList.contains('settings-open') };
+})();
+
+</script>
+<script>
 (function () {
   'use strict';
   Snake.theme.init();
@@ -2894,6 +3233,7 @@ window.Snake = window.Snake || {};
   Snake.UI.init();
   Snake.Render.boot();
   Snake.api.reset();
+  if (Snake.Experience) Snake.Experience.init();
   if (new URLSearchParams(location.search).get('autostart') === '1') Snake.api.start(); // ?autostart=1：自动开赛（截图/演示用）
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {   // 离线缓存：仅 http(s) 注册，file:// 双击打开静默跳过
     addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
