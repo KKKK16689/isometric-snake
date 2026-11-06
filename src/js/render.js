@@ -20,7 +20,7 @@ window.Snake = window.Snake || {};
      几乎不漏帧且过了试升冷却再逐档升回。只改背店分辨率，几何 / 配色 / 规则一概不动。 */
   let qScale = 1, qHold = 0, qProbe = 0, qWin = 0, qDrop = 0, qPre = 0, qDirty = false, qFloor = 1;
   const Q = { min: .5, step: .85, dropMs: 25, dropHi: .08, dropLo: .01, warmup: 45, win: 60, retryMs: 30000, softMin: 1 };   // retryMs：升档冷却 30s——每次换档都要重建背店（一帧尖峰），别太频繁
-  const BUILD = 'stage5.3';   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
+  const BUILD = 'v' + K.VERSION;   // 构建标记：?fps=1 读数里显示，便于确认浏览器拿到的是哪一版（排查 SW 缓存/旧标签页）
   const FPS_ON = /(^|[?&])fps=1(&|$)/.test((typeof location !== 'undefined' && location.search) || '');   // ?fps=1 诊断读数
   const QFIX = (() => {   // ?q=0.4~1：固定画质倍率（并用它关掉自适应降档），给用户做清晰度/流畅度 A/B
     const m = /(^|[?&])q=([0-9.]+)/.exec((typeof location !== 'undefined' && location.search) || '');
@@ -347,7 +347,7 @@ window.Snake = window.Snake || {};
     // 挡在蛇前面的高地形靠近时半透明：别把蛇和地图糊住（用户反馈：墙体遮住地图）
     let al = 1;
     const hd = S.pl[0] && S.pl[0].body[0];
-    if (hd && top > liftAt(hd.x, hd.y, hd.L) + 2 && (o.x + o.y) > (hd.x + hd.y) &&
+    if (hd && top > liftAt(hd.x, hd.y, hd.L) + 2 && (o.x + o.y) >= (hd.x + hd.y) &&
         Math.abs(o.x - hd.x) + Math.abs(o.y - hd.y) <= 3) al = .34;
     if (al < 1) ctx.globalAlpha = al;
     if (t.kind === 'deck') {   // 桥面：地面投影 + 两根斜柱（简报 Q5）
@@ -493,7 +493,7 @@ window.Snake = window.Snake || {};
   const MM_C = { ground: '#2C3757', deck: '#54637F', water: '#16324F', portal: '#7FD4FF', food: '#F2B33D', head: '#5DCAA5', frame: 'rgba(255,255,255,.5)' };
   function mmUpdate(t) {
     if (!mmCtx) return;
-    const on = !!S.T && S.mode === 'expedition';
+    const on = !!S.T && (S.mode === 'expedition' || !!S.mission);
     if (document.body.classList.contains('mm') !== on) document.body.classList.toggle('mm', on);
     if (!on || t - mmT < 200) return;   // 4~8Hz：别每帧重绘（规格 §4）
     mmT = t;
@@ -572,7 +572,7 @@ window.Snake = window.Snake || {};
     drawBoard();
     /* 周期闸门的能量帘：关=满高发亮，开=收进地面。用 core 的同一个时钟（S.now），保证「看见的」与「判定的」一致。 */
     if (S.T && Snake.gates) {
-      const gn = S.now || t;
+      const gn = S.elapsed;
       for (const g of Snake.gates.list()) {
         const gx = PX(g.x, g.y), gy = PY(g.x, g.y) + K.HH;
         if (gx < -K.TW || gx > S.W + K.TW || gy < -K.TH * 4 || gy > S.H + K.TH * 4) continue;
@@ -597,8 +597,8 @@ window.Snake = window.Snake || {};
       }
       if (!p.dead) glowAt(PX(arr[0].x, arr[0].y), PY(arr[0].x, arr[0].y) + K.HH - 9 - (arr[0].z || 0), 22, p.sprint ? pal.glow : K.SK[S.skin[i]].body[1], .5);
     });
-    S.foods.forEach(f => { const sx = PX(f.x, f.y), sy = PY(f.x, f.y) - liftOf(f.x, f.y); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); glowAt(sx, sy + K.HH, 14 + Math.sin(t / 300) * 4, fg, .4); });   // 食物辉光始终保留（Stage 0）
-    if (S.gold) { const sx = PX(S.gold.x, S.gold.y), sy = PY(S.gold.x, S.gold.y) - liftOf(S.gold.x, S.gold.y); diamond(sx, sy + K.HH, K.HW * 1.8, K.HH * 1.8, 'rgba(242,179,61,.22)'); glowAt(sx, sy + K.HH, 18 + Math.sin(t / 200) * 5, '#F2B33D', .55); }   // 金苹果地板光 + 辉光（跟着台面高度走）
+    S.foods.forEach(f => { const sx = PX(f.x, f.y), sy = PY(f.x, f.y) - liftAt(f.x, f.y, f.L); diamond(sx, sy + K.HH, K.HW * 1.5, K.HH * 1.5, K.rgba(fg, .18)); glowAt(sx, sy + K.HH, 14 + Math.sin(t / 300) * 4, fg, .4); });   // 食物辉光始终保留（Stage 0）
+    if (S.gold) { const sx = PX(S.gold.x, S.gold.y), sy = PY(S.gold.x, S.gold.y) - liftAt(S.gold.x, S.gold.y, S.gold.L); diamond(sx, sy + K.HH, K.HW * 1.8, K.HH * 1.8, 'rgba(242,179,61,.22)'); glowAt(sx, sy + K.HH, 18 + Math.sin(t / 200) * 5, '#F2B33D', .55); }   // 金苹果地板光 + 辉光（跟着台面高度走）
     refreshPortals();   // 传送门呼吸光：让「脚下就是门」一眼可见（关卡变了才重算位置）
     for (const q of PORTALS) {
       const qx = PX(q.x, q.y), qy = PY(q.x, q.y) - liftAt(q.x, q.y, q.L);
@@ -676,21 +676,21 @@ window.Snake = window.Snake || {};
       }
     }
     S.pl.forEach((p, i) => PTS[i].forEach((s, j) => pushItem(s.x, s.y, i, j, p.body.length, j === 0, p.dead, false, false, null, s.z || 0, p.body[j] ? (p.body[j].L || 0) : 0)));
-    S.foods.forEach(f => pushItem(f.x, f.y, 0, 0, 0, false, false, true, false, null, liftOf(f.x, f.y), f.L || 0));   // 层号必须一起传：否则同格地形块的排序键更高，会把豆子盖住
-    if (S.gold) pushItem(S.gold.x, S.gold.y, 0, 0, 0, false, false, false, true, null, liftOf(S.gold.x, S.gold.y), S.gold.L || 0);
+    S.foods.forEach(f => pushItem(f.x, f.y, 0, 0, 0, false, false, true, false, null, liftAt(f.x, f.y, f.L), f.L || 0));   // 层号必须一起传：否则同格地形块的排序键更高，会把豆子盖住
+    if (S.gold) pushItem(S.gold.x, S.gold.y, 0, 0, 0, false, false, false, true, null, liftAt(S.gold.x, S.gold.y, S.gold.L), S.gold.L || 0);
     items.length = ic;
     items.sort((a, b) => (a.x + a.y) - (b.x + b.y) || (a.lyr || 0) - (b.lyr || 0) || (a.terr ? 0 : 1) - (b.terr ? 0 : 1)); // 画家算法：后→前；同格低层先画、地形先画（规格 §4 深度键：x+y → layer → 类型）
     let occl = false;   // 有高地形挡在蛇头前面：最后补一层半透明轮廓（规格 §4）
     const hd0 = S.pl[0] && S.pl[0].body[0];
     for (const o of items) {
       if (o.terr) {
-        if (hd0 && !occl && o.terr.h * BLK > liftAt(hd0.x, hd0.y, hd0.L) + 2 && (o.x + o.y) > (hd0.x + hd0.y) &&
+        if (hd0 && !occl && o.terr.h * BLK > liftAt(hd0.x, hd0.y, hd0.L) + 2 && (o.x + o.y) >= (hd0.x + hd0.y) &&
           Math.abs(o.x - hd0.x) + Math.abs(o.y - hd0.y) <= 2) occl = true;
         drawTerr(o); continue;   // 地形块（远征）：墙/高台/桥面，按层高抬升
       }
       const zb = o.zb || 0;                    // 站在高台上的实体整体抬升（经典模式恒 0）
       if (o.gold) {   // 金苹果：金色立方，最后 2s 闪烁告警（游戏时钟，暂停不闪走）；辉光已在加法通道绘
-        const remaining = K.TUNE.goldTtl - (S.last - S.gold.born);
+        const remaining = K.TUNE.goldTtl - (S.elapsed - S.gold.born);
         const sx = PX(o.x, o.y), sy = PY(o.x, o.y) - zb;
         ctx.globalAlpha = remaining < 2000 && Math.floor(remaining / 150) % 2 === 0 ? .3 : 1;
         diamond(sx, sy + K.HH, K.HW * .55, K.HH * .55, 'rgba(0,0,0,.25)');
@@ -717,6 +717,22 @@ window.Snake = window.Snake || {};
       }
       ctx.globalAlpha = 1;
     }
+    if (S.assist && S.state !== 'over') {
+      S.pl.forEach((p, i) => {
+        if (p.ai) return;
+        const n = api.preview(i); if (!n) return;
+        const px = PX(n.x, n.y), py = PY(n.x, n.y) + K.HH - liftAt(n.x, n.y, n.L);
+        ctx.strokeStyle = n.safe ? '#9cf3cf' : '#ff8e99'; ctx.lineWidth = 1.3;
+        ctx.beginPath(); ctx.moveTo(px, py - K.HH * .75); ctx.lineTo(px + K.HW * .75, py);
+        ctx.lineTo(px, py + K.HH * .75); ctx.lineTo(px - K.HW * .75, py); ctx.closePath(); ctx.stroke();
+      });
+    }
+    // 航标独立于实体遮挡：环形提示指明目标所在的层，桥下也能定位。
+    if (S.mission && S.foods[0]) {
+      const g = S.foods[0], px = PX(g.x, g.y), py = PY(g.x, g.y) - liftAt(g.x, g.y, g.L);
+      ctx.strokeStyle = '#ffe5a0'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(px, py, K.HW * .8, K.HH * .8, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#ffe5a0'; ctx.font = '600 10px system-ui'; ctx.textAlign = 'center'; ctx.fillText(String(S.missionIndex + 1), px, py - 15);
+    }
     S.pl.forEach((p, i) => { if (p.sprint) Snake.Fx.trail(p, i, dt); }); // 冲刺拖尾（lowFx 自动关）
     Snake.Fx.update(dt);
     Snake.Fx.draw(ctx);
@@ -728,11 +744,12 @@ window.Snake = window.Snake || {};
     });
     if (sh > 0) ctx.restore();
     const statsLine = (S.daily ? '种子 ' + S.seed + ' · ' : '') + '累计 ' + S.stats.games + ' 局 · ' + S.stats.food + ' 食物 · ' + S.stats.gold + ' 金苹果';   // 结算第三行
-    if (S.state === 'ready') overlay(
+    const domOverlay = Snake.Experience && Snake.Experience.isOpen();
+    if (!domOverlay && S.state === 'ready') overlay(
       S.daily ? '每日挑战 · ' + (K.dateStr(S.seed) || ('种子 ' + S.seed)) : pk ? (K.MODES[S.mode].ai ? '人机对战 · CR' : '双人对战') : '等距贪吃蛇',
       pk ? (K.MODES[S.mode].ai ? 'WASD 或方向键 · E/Shift 冲刺 · 点击开始' : 'P1 WASD·E 冲刺   P2 方向键·Enter 冲刺') : S.daily ? '同一种子 · 同一局 · 按方向键开始' : '点击画面或按方向键开始');
-    else if (S.state === 'paused') overlay(S.msg || '已暂停', '点击画面或按空格继续');
-    else if (S.state === 'over') overlay(
+    else if (!domOverlay && S.state === 'paused') overlay(S.msg || '已暂停', '点击画面或按空格继续');
+    else if (!domOverlay && S.state === 'over') overlay(
       S.msg || (pk ? (S.winner < 0 ? '平局' : K.MODES[S.mode].ai ? (S.winner ? 'AI 获胜' : '你赢了') : 'P' + (S.winner + 1) + ' 获胜') : '游戏结束 · ' + S.pl[0].score + ' 分'),
       '点击画面重新开始' + (S.daily ? ' · 工具栏可复制成绩' : ''),
       statsLine);
