@@ -188,16 +188,17 @@ window.Snake = window.Snake || {};
     const terrBtn = $('terrain'), lvSel = $('lv');
     function terrainSync() {
       if (terrBtn) { terrBtn.textContent = '地形'; terrBtn.classList.toggle('off', !S.terrain); terrBtn.title = '地形：' + (S.terrain ? (S.levelName || S.levelId) : '关'); }
-      if (lvSel) { lvSel.value = S.levelId; lvSel.style.display = S.terrain ? 'inline-block' : 'none'; }
+      if (lvSel) { lvSel.value = S.terrain ? S.levelId : ''; lvSel.style.display = 'inline-block'; }
       ghostLabel();
     }
     if (lvSel) {
+      const classic = document.createElement('option'); classic.value = ''; classic.textContent = '经典棋盘（无地形）'; lvSel.appendChild(classic);
       (Snake.LEVELS || []).filter(l => l.id !== 'test-24').forEach(l => {
         const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; lvSel.appendChild(o);
       });
       lvSel.addEventListener('change', () => {
-        api.setTerrain(true, lvSel.value); lvSel.blur();
-        toast('关卡：' + S.levelName); terrainSync();
+        api.setTerrain(!!lvSel.value, lvSel.value || undefined); lvSel.blur();
+        toast(S.terrain ? '关卡：' + S.levelName : '经典棋盘'); terrainSync(); syncModeUi();
       });
     }
     if (terrBtn) terrBtn.addEventListener('click', () => {

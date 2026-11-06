@@ -37,7 +37,7 @@ async function run(browser, out = path.join(ROOT, 'output/playwright')) {
       assert.equal(await page.evaluate(()=>Snake.S.state),'paused');
       assert.equal(await page.locator('#settings').getAttribute('aria-expanded'),'true');
       await page.screenshot({path:path.join(out,`settings-${width}x${height}.png`)});
-      const settingsBounds = await page.locator('.mode').evaluate(el => {
+      const settingsBounds = await page.locator('#preferences').evaluate(el => {
         const r = el.getBoundingClientRect();
         return {top:r.top,bottom:r.bottom,viewport:innerHeight};
       });
@@ -79,6 +79,7 @@ if (require.main === module) (async()=> {
     ...(process.env.QA_BROWSER ? {executablePath:process.env.QA_BROWSER} : {}),args:['--disable-crashpad']});
   try {
     await run(browser);
+    await require('./settings-regression.cjs').run(browser,path.join(ROOT,'output/playwright'));
     await require('./sw-browser-regression.cjs').run(browser,path.join(ROOT,'output/playwright'));
   } finally { await browser.close(); }
 })().catch(e=>{console.error(e);process.exitCode=1;});

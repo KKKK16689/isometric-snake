@@ -11,8 +11,9 @@ window.Snake = window.Snake || {};
   const sprintKeys = ['ShiftLeft', 'ShiftRight', 'KeyE', 'Enter'];
   function pause() { S.pl.forEach(p => api.setHold(S.pl.indexOf(p), false)); if (S.state === 'playing') api.togglePause(); }
   function cancelHold() { clearTimeout(holdTimer); holdTimer = 0; }
-  function close() { document.body.classList.remove('settings-open'); if ($('settings')) $('settings').setAttribute('aria-expanded', 'false'); document.querySelectorAll('main > :not(#experience)').forEach(el => el.inert = false); cancelHold(); page = ''; panel.hidden = true; panel.innerHTML = ''; lastState = ''; }
+  function close() { document.body.classList.remove('settings-open'); if ($('preferences')) $('preferences').hidden = true; if ($('settings')) $('settings').setAttribute('aria-expanded', 'false'); document.querySelectorAll('main > :not(#experience)').forEach(el => el.inert = false); cancelHold(); page = ''; panel.hidden = true; panel.innerHTML = ''; lastState = ''; }
   function open(name, body) {
+    if ($('preferences')) $('preferences').hidden = true;
     pause(); document.body.classList.remove('settings-open'); $('settings').setAttribute('aria-expanded', 'false'); document.querySelectorAll('main > :not(#experience)').forEach(el => el.inert = true); page = name; panel.hidden = false;
     panel.innerHTML = '<section class="experience-card" role="dialog" aria-modal="true" aria-label="' + (name === 'home' ? '游戏主页' : name === 'training' ? '方向练习' : '对局信息') + '">' + body + '</section>';
     const focus = panel.querySelector('button'); if (focus) focus.focus();
@@ -22,17 +23,17 @@ window.Snake = window.Snake || {};
   function record() {
     try { const p = JSON.parse(K.safeGet('iso-snake-progress-v1', '{}')); return p && p['harbor-route-1']; } catch (e) { return null; }
   }
-  function play(mode, terrain) { close(); api.setMode(mode); api.setTerrain(terrain); Snake.UI.syncModeUi(); }
+  function play(mode, terrain) { const id = terrain && S.levelId === 'harbor-route' ? 'harbor-32' : undefined; close(); api.setMode(mode); api.setTerrain(terrain, id); Snake.UI.syncModeUi(); }
   function home() {
     const p = record(), done = p && p.completed && Number.isFinite(p.bestMs) && p.bestMs > 0;
     open('home', '<p class="eyebrow">ISOMETRIC SNAKE · V' + K.VERSION + '</p><h2>转个方向，<br>走出新的路线。</h2><p class="intro">穿过桥下，登上高台。用路线和节奏，赢下这场等距冒险。</p>' +
-      '<button id="play-mission" class="feature-card"><span class="card-icon">↗</span><span><small>推荐 · 六段路线挑战</small><strong>港口航线</strong><em>' + (done ? '已通关 · 最佳 ' + (p.bestMs / 1000).toFixed(1) + ' 秒' : '桥下通行 / 登桥 / 跨水 / 高台') + '</em></span><b>开始 →</b></button>' +
-      '<div class="choice-grid">' + button('play-classic', '<strong>经典练手</strong><small>慢速 · 三条命</small>') + button('play-terrain', '<strong>自由探索</strong><small>地形地图 · 自选路线</small>') + button('play-ai', '<strong>挑战 CR</strong><small>三档 AI · 同场竞速</small>') + button('play-pk', '<strong>双人对战</strong><small>同屏 · WASD / 方向键</small>') + '</div>' +
-      '<div class="card-footer">' + button('learn', '↗ 方向练习') + button('back-game', S.state === 'paused' ? '返回暂停中的对局' : '返回棋盘') + '</div><p class="credits">作者：' + K.AUTHOR + ' · 本地保存进度 · 零依赖 Canvas</p>');
+      '<button id="play-mission" class="feature-card"><span class="card-icon">↗</span><span><small>18×18 · 六段路线挑战</small><strong>港口航线</strong><em>' + (done ? '已通关 · 最佳 ' + (p.bestMs / 1000).toFixed(1) + ' 秒' : '桥下通行 / 登桥 / 跨水 / 高台') + '</em></span><b>开始 →</b></button>' +
+      '<div class="choice-grid">' + button('play-classic', '<strong>经典练手</strong><small>慢速 · 三条命</small>') + button('play-terrain', '<strong>自由探索</strong><small>32～40 格大地图 · 自选路线</small>') + button('play-ai', '<strong>挑战 CR</strong><small>三档 AI · 同场竞速</small>') + button('play-pk', '<strong>双人对战</strong><small>同屏 · WASD / 方向键</small>') + '</div>' +
+      '<div class="card-footer">' + button('learn', '↗ 方向练习') + button('home-settings', '地图 / 主题 / 蛇色') + button('back-game', S.state === 'paused' ? '返回暂停中的对局' : '返回棋盘') + '</div><p class="credits">作者：' + K.AUTHOR + ' · 本地保存进度 · 零依赖 Canvas</p>');
     bind('play-mission', () => { close(); api.startMission(); Snake.UI.syncModeUi(); });
     bind('play-classic', () => play('easy', false)); bind('play-terrain', () => play('easy', true));
     bind('play-ai', () => play('ai', false)); bind('play-pk', () => play('pk', false));
-    bind('learn', trainingStart); bind('back-game', close);
+    bind('learn', trainingStart); bind('home-settings', settings); bind('back-game', close);
   }
   function practiceSvg() {
     let svg = '<svg viewBox="0 0 280 154" role="img" aria-label="方向练习棋盘">';
@@ -78,6 +79,8 @@ window.Snake = window.Snake || {};
   function releaseKey(e) { if (sprintKeys.includes(e.code)) cancelHold(); }
   function settings() {
     const on = !document.body.classList.contains('settings-open'); pause(); close(); document.body.classList.toggle('settings-open', on);
+    $('preferences').hidden = !on;
+    if (on) { document.querySelectorAll('main > :not(#preferences):not(.play-actions):not(#experience)').forEach(el => el.inert = true); $('close-settings').focus(); }
     $('settings').setAttribute('aria-expanded', String(on));
   }
   function statePanel() {
@@ -90,10 +93,10 @@ window.Snake = window.Snake || {};
     const detail = S.missionWon ? '六个航标全部收集 · 用时 ' + (S.elapsed / 1000).toFixed(1) + ' 秒' : over ? (S.msg || (K.MODES[S.mode].players === 2 ? (S.winner < 0 ? '平局' : K.nm(S.winner) + ' 获胜') : '游戏结束')) : goal ? goal.tip : '↑/W ↗　→/D ↘　↓/S ↙　←/A ↖';
     open('state', '<p class="eyebrow">' + (S.mission ? 'HARBOR ROUTE' : 'ISOMETRIC SNAKE') + '</p><h2>' + title + '</h2><p class="intro">' + detail + '</p>' +
       (over ? '<p class="result-score">' + S.pl[0].score + '<small>得分 · 已收集 ' + (S.mission ? S.missionIndex + '/' + S.mission.goals.length + ' 航标' : '本局长度 ' + S.pl[0].body.length) + '</small></p>' : '<p class="micro">' + (S.mission ? '三条命 · 依次收集六个航标 · 小地图显示当前目标' : '按住 Shift / E 冲刺，空格暂停。') + '</p>') +
-      '<div class="card-footer">' + button('state-start', over ? '再试一次' : ready ? '开始' : '继续', 'primary') + button('state-home', '返回主页') + button('state-train', '方向练习') + '</div>');
+      '<div class="card-footer">' + button('state-start', over ? '再试一次' : ready ? '开始' : '继续', 'primary') + button('state-settings', '地图 / 主题 / 蛇色') + button('state-home', '返回主页') + button('state-train', '方向练习') + '</div>');
     lastState = S.state;
     bind('state-start', () => { close(); if (over) api.restart(); api.start(); });
-    bind('state-home', home); bind('state-train', trainingStart);
+    bind('state-settings', settings); bind('state-home', home); bind('state-train', trainingStart);
   }
   function tick() {
     if (!panel) return;
@@ -110,6 +113,7 @@ window.Snake = window.Snake || {};
     document.body.classList.add('experience-enabled');
     S.assist = K.safeGet('iso-snake-assist', '1') !== '0';
     bind('menu', home); bind('help', trainingStart); bind('settings', settings);
+    bind('close-settings', settings);
     bind('pause', () => { if (page === 'home' || page === 'training') return; close(); api.togglePause(); });
     bind('restart', () => { close(); api.restart(); });
     const assist = document.createElement('button'); assist.id = 'assist'; assist.textContent = '落点提示'; assist.setAttribute('aria-pressed', String(S.assist));
