@@ -1,12 +1,13 @@
 {
   "name": "isometric-snake",
-  "version": "5.0.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "等距（2.5D）视角贪吃蛇：单 HTML 文件、零依赖、纯 Canvas 渲染（大版本 2.0）",
+  "description": "等距贪吃蛇 V3.0.0：多层地形、港口航线、方向练习与同屏对战",
   "scripts": {
     "build": "node build.js",
     "icons": "node tools/gen-icons.mjs",
     "test": "node --test"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "author": "孔垂瑞"
 }

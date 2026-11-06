@@ -6,6 +6,7 @@ window.Snake = window.Snake || {};
 
   /* ---------- 常量 ---------- */
   const K = {
+    VERSION: '3.0.0', AUTHOR: '孔垂瑞',
     TW: 30, TH: 15,
     HW: 15, HH: 7.5,                     // 半格宽/高：TW/TH 派生常量（去 getter，省逐帧热路径开销）
     OY: 34,
@@ -59,6 +60,8 @@ window.Snake = window.Snake || {};
     lowFx: false, frameDt: .016,        // lowFx 由 render 检测并写入
     mode: 'easy', pl: [], foods: [], state: 'ready', msg: '', last: 0,
     best: 0, wins: [0, 0], winner: -1, tickN: 0, overAt: 0, skin: [0, 1], fxGood: 0,
+    elapsed: 0, mission: null, missionIndex: 0, missionWon: false, deathReasons: [],
+    assist: false,
     seed: 0, daily: false,              // 每日挑战：随机种子（0=未播种），daily 标记决定徽章/成绩文案
     gold: null,                         // 金苹果 {x, y, born}，born 以游戏时钟计
     rec: [], myMoves: 0,                // 幽灵录制：p0 每步头格 [x,y,x,y,…] 与已走步数
@@ -134,7 +137,7 @@ window.Snake = window.Snake || {};
     return null;
   };
   const gateList = () => { const lv = (Snake.levelById && Snake.levelById(S.levelId)) || (Snake.LEVELS || []).find(l => l.id === S.levelId); return (lv && lv.gates) || []; };
-  const gateOpen = g => { const pd = g.period || 4000; return ((S.now + (g.phase || 0)) % pd) < pd / 2; };
+  const gateOpen = g => { const pd = g.period || 4000; return ((S.elapsed + (g.phase || 0)) % pd) < pd / 2; };
   const gateBlocked = (x, y) => {
     for (const g of gateList()) {
       if (g.x !== x || g.y !== y || gateOpen(g)) continue;
@@ -168,8 +171,8 @@ window.Snake = window.Snake || {};
   }
   /* 经典模式沿用 2.0 的榜/存档键（不动老数据）；开了 3D 按规格 §3.7 用 iso-snake-3: 前缀，
      并把模式与关卡 id 都写进键里（同一关卡在不同模式下的成绩分开记） */
-  const bestKey = () => S.T ? 'iso-snake-3:best-' + S.mode + '-' + S.levelId : 'iso-snake-best2-' + S.mode;
-  const ghostKey = () => S.T ? 'iso-snake-3:ghost-' + S.mode + '-' + S.levelId : 'iso-snake-ghost-' + S.mode;
+  const bestKey = () => S.mission ? 'iso-snake-3:mission-best-' + S.mission.id : S.T ? 'iso-snake-3:best-' + S.mode + '-' + S.levelId : 'iso-snake-best2-' + S.mode;
+  const ghostKey = () => S.mission ? 'iso-snake-3:mission-ghost-' + S.mission.id : S.T ? 'iso-snake-3:ghost-' + S.mode + '-' + S.levelId : 'iso-snake-ghost-' + S.mode;
   function loadBest() { S.best = +safeGet(bestKey(), 0) || 0; }
   /* 本地统计（累计局数/食物/金苹果），持久化于 iso-snake-stats */
   function loadStats() { try { const o = JSON.parse(safeGet('iso-snake-stats', '{}')); S.stats = { games: +o.games || 0, food: +o.food || 0, gold: +o.gold || 0 }; } catch (e) {} }
@@ -190,10 +193,10 @@ window.Snake = window.Snake || {};
     if (K.MODES[S.mode].players === 1) {
       const p = S.pl[0], ds = dateStr(S.seed);
       return S.daily
-        ? '等距贪吃蛇 2.0 · 每日挑战' + (ds ? ' ' + ds : '') + '（种子 ' + S.seed + '）：得分 ' + p.score + '，长度 ' + p.body.length + '。来战：' + URL_HOME + '?daily=1'
-        : '等距贪吃蛇 2.0 · ' + MODE_NAME[S.mode] + '：得分 ' + p.score + '，长度 ' + p.body.length + '。来战：' + URL_HOME;
+        ? '等距贪吃蛇 V' + K.VERSION + ' · 每日挑战' + (ds ? ' ' + ds : '') + '（种子 ' + S.seed + '）：得分 ' + p.score + '，长度 ' + p.body.length + '。来战：' + URL_HOME + '?daily=1'
+        : '等距贪吃蛇 V' + K.VERSION + ' · ' + MODE_NAME[S.mode] + '：得分 ' + p.score + '，长度 ' + p.body.length + '。来战：' + URL_HOME;
     }
-    return '等距贪吃蛇 2.0 · ' + MODE_NAME[S.mode] + '：' + (S.winner >= 0 ? nm(S.winner) + ' 胜' : '平局') + '（' + S.pl.map(p => p.score).join(' : ') + '）。来战：' + URL_HOME;
+    return '等距贪吃蛇 V' + K.VERSION + ' · ' + MODE_NAME[S.mode] + '：' + (S.winner >= 0 ? nm(S.winner) + ' 胜' : '平局') + '（' + S.pl.map(p => p.score).join(' : ') + '）。来战：' + URL_HOME;
   }
   function spawn(i, p) {
     const two = K.MODES[S.mode].players === 2;
@@ -210,7 +213,7 @@ window.Snake = window.Snake || {};
       const y = two ? (i ? S.N - 5 : 4) : 6, xs = two ? (i ? [S.N - 5, S.N - 4, S.N - 3] : [4, 3, 2]) : [3, 2, 1];
       p.body = xs.map(x => ({ x, y, L: 0 })); dir = i ? K.DIRS.upLeft : K.DIRS.downRight;
     }
-    p.dir = dir; p.queue = []; p.dead = false;
+    p.dir = dir; p.queue = []; p.dead = false; p.portCool = false;
     p.moveT = 0; p.moveTGame = 0; p.moveP = 300; p.grew = false; p.tailFrom = null; p.streakAt = 0;  // 插值/连击时钟复位
   }
   /* 可放格列表（食物/金苹果共用）
@@ -239,6 +242,11 @@ window.Snake = window.Snake || {};
     return free;
   }
   function fillFoods() { // 空格列表取样（拒绝采样在长局会退化，满盘时无解）；无处可放 → 满盘结算
+    if (S.mission) {
+      const goal = S.mission.goals[S.missionIndex];
+      S.foods = goal ? [{ x: goal.x, y: goal.y, L: goal.L }] : [];
+      return;
+    }
     const want = (S.T && K.MODES[S.mode].players === 2) ? K.TUNE.foods3d : K.MODES[S.mode].foods;   // 3D 双人对战多给食物，减少「抢同一颗」的迎头撞
     if (S.foods.length >= want) return;
     const free = freeCells();
@@ -274,6 +282,7 @@ window.Snake = window.Snake || {};
     if (tsOn()) { if (!S.T) loadLevel(S.levelId || 'neon-32'); setSize(S.T.w, viewN()); }   // 3D：按关卡建层图，视口按模式定
     else { S.T = null; setSize(m.n, m.n); }   // 未开 3D：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
     if (S.daily && S.seed) setSeed(S.seed);   // 每日挑战重开：随机流复位到同一种子（同种子同局）
+    S.elapsed = 0; S.missionIndex = 0; S.missionWon = false; S.deathReasons = [];
     S.tickN = 0; S.lowFx = false; S.frameDt = .016; S.fxGood = 0;
     S.pl = [...Array(m.players)].map((_, i) => {
       const p = { score: 0, lives: m.lives, energy: 100, locked: false, hold: false, sprint: false, trail: [], streak: 0, ai: !!m.ai && i === 1,
@@ -298,8 +307,9 @@ window.Snake = window.Snake || {};
   }
   function step(now) {   // now = 游戏时钟（S.last），与 rAF 的 t 同基准，供插值/连击
     S.tickN++;
-    S.pl.forEach(p => { if (p.streak > 0 && now - p.streakAt > K.TUNE.comboWindow) p.streak = 0; });   // 连击超时衰减
-    if (S.gold && now - S.gold.born > K.TUNE.goldTtl) S.gold = null;   // 金苹果过期（游戏时钟，暂停不计时）
+    S.elapsed += tickMs();
+    S.pl.forEach(p => { if (p.streak > 0 && S.elapsed - p.streakAt > K.TUNE.comboWindow) p.streak = 0; });   // 连击超时衰减
+    if (S.gold && S.elapsed - S.gold.born > K.TUNE.goldTtl) S.gold = null;   // 金苹果过期（游戏时钟，暂停不计时）
     S.pl.forEach((p, i) => { if (p.ai && !p.dead && Snake.hooks.think) Snake.hooks.think(p, i); });
     const dt = tickMs() / 1000;
     S.pl.forEach((p, i) => {   // 冲刺耗能 / 恢复；能量归零锁定到 30
@@ -316,24 +326,24 @@ window.Snake = window.Snake || {};
       if (!mv[i]) return null;
       if (p.queue.length) p.dir = p.queue.shift();
       const h0 = p.body[0], L0 = h0.L || 0;
-      if (!S.T) return { x: h0.x + p.dir[0], y: h0.y + p.dir[1], L: 0, bad: solid(h0.x + p.dir[0], h0.y + p.dir[1]) };
+      if (!S.T) return { x: h0.x + p.dir[0], y: h0.y + p.dir[1], L: 0, bad: solid(h0.x + p.dir[0], h0.y + p.dir[1]), reason: '撞到边界' };
       const pe = p.portCool ? null : portalEdge(h0.x, h0.y, L0);   // §3.4：踩在传送门上 → 本步走传送门边
       if (pe) { p.portCool = true; bus.emit('port', { x: h0.x, y: h0.y, L: L0, tx: pe.x, ty: pe.y, tL: pe.L || 0, i }); return pe; }   // 两端都要有光效，别让人「莫名其妙被传走」
       p.portCool = false;                                         // 刚从传送门出来那一拍不许再传：否则会在两端来回弹、身体叠在自己头上把自己撞死（用户反馈「一到传送门就死」）
       const nx = h0.x + p.dir[0], ny = h0.y + p.dir[1], pk = S.T.pick(nx, ny, L0);   // §3.3：按层选落点
-      if (!pk) return { x: nx, y: ny, L: L0, bad: true };          // 墙 / 水 / 悬崖（最小高差 > 1）
-      if (gateBlocked(nx, ny)) return { x: nx, y: ny, L: L0, bad: true };   // 闸门此刻是关的 ⇒ 按墙处理（冰面/闸门互斥，顺序无所谓）
+      if (!pk) return { x: nx, y: ny, L: L0, bad: true, reason: terrainReason(nx, ny, L0) };          // 墙 / 水 / 悬崖（最小高差 > 1）
+      if (gateBlocked(nx, ny)) return { x: nx, y: ny, L: L0, bad: true, reason: '撞到关闭的闸门' };   // 闸门此刻是关的 ⇒ 按墙处理（冰面/闸门互斥，顺序无所谓）
       if (pk.layer && pk.layer.kind === 'belt') {              // 运输带：载着蛇走（拍板 ②）
         const b = beltAt(nx, ny);
         if (b) {
-          let cx2 = nx, cy2 = ny;
+          let cx2 = nx, cy2 = ny, cL = pk.h; const path = [{ x: nx, y: ny, L: cL }];
           for (let n2 = 0; n2 < 12; n2++) {
-            const mx = cx2 + b.dx, my = cy2 + b.dy, mp = S.T.pick(mx, my, L0);
-            if (!mp || gateBlocked(mx, my)) return { x: mx, y: my, L: L0, bad: true };   // 被带进墙/水/悬崖/关门 ⇒ 判负
-            cx2 = mx; cy2 = my;
+            const mx = cx2 + b.dx, my = cy2 + b.dy, mp = S.T.pick(mx, my, cL);
+            if (!mp || gateBlocked(mx, my)) return { x: mx, y: my, L: cL, bad: true, reason: '运输带推入障碍', path };   // 被带进墙/水/悬崖/关门 ⇒ 判负
+            cx2 = mx; cy2 = my; cL = mp.h; path.push({ x: mx, y: my, L: cL });
             if (!(mp.layer && mp.layer.kind === 'belt')) break;                          // 走出带面 ⇒ 停在这一格
           }
-          return { x: cx2, y: cy2, L: L0, bad: false };
+          return { x: cx2, y: cy2, L: cL, bad: false, path };
         }
       }
       if (pk.layer && pk.layer.kind === 'ice') {                    // 冰面：一步可能滑多格（§5 的 transition 表）
@@ -341,28 +351,38 @@ window.Snake = window.Snake || {};
         const slideFn = S.T.slide || (Snake.Terrain && Snake.Terrain.slide);   // 滑行表是 terrain 的模块级导出（不在层图对象上）
         const sl = slideFn(S.T, h0.x, h0.y, L0, [p.dir[0], p.dir[1]], 64);
         const last = sl.path[sl.path.length - 1];
-        if (last) { bus.emit('slide', { x: last.x, y: last.y, L: last.L, i }); return { x: last.x, y: last.y, L: last.L, bad: false, slide: sl.path }; }
+        if (last) { bus.emit('slide', { x: last.x, y: last.y, L: last.L, i }); return { x: last.x, y: last.y, L: last.L, bad: false, slide: sl.path, path: sl.path }; }
       }
       return { x: nx, y: ny, L: pk.h };
     });
     const onFood = (x, y, L) => S.foods.findIndex(f => f.x === x && f.y === y && (f.L || 0) === (L || 0));
     const eat = hs.map(h => {                        // 冰面滑行：途经格上的食物也算吃掉（§5 逐格处理）
       if (!h) return -1;
-      if (h.slide) for (const s of h.slide) { const k = onFood(s.x, s.y, s.L); if (k >= 0) return k; }
+      if (h.path) for (const s of h.path) { const k = onFood(s.x, s.y, s.L); if (k >= 0) return k; }
       return onFood(h.x, h.y, h.L);
     });
+    const same = (a, b) => a.x === b.x && a.y === b.y && (a.L || 0) === (b.L || 0);
     const hit = hs.map((h, i) => {
       if (!h) return false;
-      if (h.bad) return true;                                      // 撞墙/水/悬崖
-      const L = h.L || 0;
-      if (hs.some((o, j) => j !== i && o && !o.bad && o.x === h.x && o.y === h.y && (o.L || 0) === L)) return true;  // 对头相撞（同层才算）
-      return S.pl.some((q, j) => (mv[j] && eat[j] < 0 ? q.body.slice(0, -1) : q.body).some(s => s.x === h.x && s.y === h.y && (s.L || 0) === L));
+      if (h.bad) { S.deathReasons[i] = h.reason || '撞到地形障碍'; return true; }
+      const path = h.path || [h];
+      for (const cell of path) {
+        if (S.T && gateBlocked(cell.x, cell.y)) { S.deathReasons[i] = '撞到关闭的闸门'; return true; }
+        if (hs.some((o, j) => j !== i && o && !o.bad && (o.path || [o]).some(n => same(n, cell)))) {
+          S.deathReasons[i] = '与对手迎头相撞'; return true;
+        }
+        for (let j = 0; j < S.pl.length; j++) {
+          const body = mv[j] && eat[j] < 0 ? S.pl[j].body.slice(0, -1) : S.pl[j].body;
+          if (body.some(n => same(n, cell))) { S.deathReasons[i] = j === i ? '撞到自己的身体' : '撞到对手的身体'; return true; }
+        }
+      }
+      return false;
     });
     if (K.MODES[S.mode].players === 1) {
       const p = S.pl[0];
       if (hit[0]) {
         p.lives--; p.streak = 0;
-        if (p.lives > 0) { bus.emit('crash', { heads: [hs[0]], partial: true }); spawn(0, p); S.state = 'paused'; S.msg = '撞到了！还剩 ' + p.lives + ' 条命'; bus.emit('hud'); }
+        if (p.lives > 0) { bus.emit('crash', { heads: [hs[0]], partial: true }); spawn(0, p); S.state = 'paused'; S.msg = S.deathReasons[0] + ' · 还剩 ' + p.lives + ' 条命'; bus.emit('hud'); }
         else gameOver();
         return;
       }
@@ -372,8 +392,8 @@ window.Snake = window.Snake || {};
       if (p.sprint) { p.trail.push({ x: p.body[0].x, y: p.body[0].y, L: p.body[0].L || 0, b: performance.now() }); if (p.trail.length > 14) p.trail.shift(); }
       p.body.unshift(hs[i]);
       if (eat[i] >= 0) {
-        if (now - p.streakAt > K.TUNE.comboWindow) p.streak = 0;
-        p.streak++; p.streakAt = now;
+        if (S.elapsed - p.streakAt > K.TUNE.comboWindow) p.streak = 0;
+        p.streak++; p.streakAt = S.elapsed;
         const gain = 1 + (p.streak >= 2 ? K.TUNE.comboBonus : 0);   // 连击中每个食物 +2（×2 封顶）
         p.score += gain; if (!p.ai) S.stats.food++;   // 统计只记人类玩家（ai 模式对手蛇不计入）
         bus.emit('eat', { x: S.foods[eat[i]].x, y: S.foods[eat[i]].y, pk: K.MODES[S.mode].players === 2, streak: p.streak, pts: gain, i });
@@ -387,7 +407,7 @@ window.Snake = window.Snake || {};
       }
     });
     if (S.gold) {   // 金苹果拾取：+3 分 +30 能量，不增长、不影响连击（两蛇同 tick 踩上则先手判给 p0）
-      const gi = hs.findIndex(h => h && !h.bad && h.x === S.gold.x && h.y === S.gold.y && (h.L || 0) === (S.gold.L || 0));
+      const gi = hs.findIndex(h => h && !h.bad && (h.path || [h]).some(n => n.x === S.gold.x && n.y === S.gold.y && (n.L || 0) === (S.gold.L || 0)));
       if (gi >= 0) {
         const p = S.pl[gi];
         p.score += K.TUNE.goldScore; if (!p.ai) S.stats.gold++;
@@ -398,8 +418,14 @@ window.Snake = window.Snake || {};
       }
     }
     const eaten = new Set(eat.filter(k => k >= 0));
-    S.foods = S.foods.filter((_, k) => !eaten.has(k)); fillFoods();
-    if (eaten.size && !S.gold && rand(1000) < K.TUNE.goldChance * 1000) spawnGold(now);   // 每次真正吃到食物后掷金苹果
+    S.foods = S.foods.filter((_, k) => !eaten.has(k));
+    if (S.mission && eaten.size) {
+      S.missionIndex++;
+      bus.emit('checkpoint', { index: S.missionIndex });
+      if (S.missionIndex === S.mission.goals.length) { completeMission(); return; }
+    }
+    fillFoods();
+    if (!S.mission && eaten.size && !S.gold && rand(1000) < K.TUNE.goldChance * 1000) spawnGold(S.elapsed);   // 每次真正吃到食物后掷金苹果
     bus.emit('hud');
   }
   function gameOver() {
@@ -415,6 +441,7 @@ window.Snake = window.Snake || {};
       if (S.winner >= 0) S.wins[S.winner]++;
       bus.emit('win', { winner: S.winner });
     }
+    S.msg = S.deathReasons.filter(Boolean).join(' · ');
     S.resultText = buildResultText();
     const heads = S.pl.filter(p => p.dead).map(p => ({ x: p.body[0].x, y: p.body[0].y }));
     bus.emit('crash', { heads });
@@ -429,14 +456,15 @@ window.Snake = window.Snake || {};
   function press(i, name) { if (S.state !== 'playing') { start(); if (S.state !== 'playing') return; } if (S.pl[i]) steer(S.pl[i], name); }
   const setHold = (i, v) => { if (S.pl[i]) S.pl[i].hold = v; };
   function setMode(m) {
-    S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0);
+    if (!K.MODES[m]) return;
+    S.mission = null; S.mode = m; S.wins = [0, 0]; S.daily = false; setSeed(0);
     if (tsOn()) loadLevel(S.levelId || 'neon-32'); else S.T = null;   // 开了 3D 就建层图，回经典就清掉
     loadBest(); newGame(); bus.emit('hud');
   }
   function setSkin(p, k) { S.skin[p] = k; bus.emit('hud'); }
   /* 每日挑战：固定普通模式 + 当日/自定义种子，食物序列可复现 */
   function startDaily(seed) {
-    S.mode = 'normal'; S.wins = [0, 0]; S.daily = true;
+    S.mission = null; S.mode = 'normal'; S.wins = [0, 0]; S.daily = true;
     setSeed(seed || dateSeed());
     loadBest(); newGame(); bus.emit('hud');
   }
@@ -485,14 +513,58 @@ window.Snake = window.Snake || {};
   Snake.hooks = { think: null };
   /* 远征入口：Stage 1 先用 URL / api 直达（工具栏不加控件，见 Stage 1 简报 Q3） */
   function startExpedition(id) {
-    S.mode = 'expedition'; S.wins = [0, 0]; S.daily = false; setSeed(0);
+    S.mission = null; S.mode = 'expedition'; S.wins = [0, 0]; S.daily = false; setSeed(0);
     loadLevel(id || S.levelId || 'neon-32'); loadBest(); newGame(); bus.emit('hud');
   }
   function setTerrain(on, id) {   // 地形（3D）与模式正交，任何模式都能开关（用户要求：既保留原版、也能随时切升级版）
+    S.mission = null;
+    if (S.mode === 'expedition' && !on) S.mode = 'normal';
     S.terrain = !!on;
     if (id) S.levelId = id;
-    if (S.terrain) { if (!S.T) loadLevel(S.levelId || 'neon-32'); } else S.T = null;
+    if (S.terrain) { loadLevel(S.levelId || 'neon-32'); } else S.T = null;
     S.wins = [0, 0]; loadBest(); newGame(); bus.emit('hud');
   }
-  Snake.api = { newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, setTerrain, update };
+  function terrainReason(x, y, L) {
+    const ls = S.T && S.T.at(x, y);
+    if (!ls) return '撞到边界';
+    if (ls.some(l => l.walkable)) return '高差过大，需从台阶通过';
+    if (ls.some(l => l.kind === 'water')) return '落入水面';
+    if (ls.some(l => l.kind === 'lava')) return '进入岩浆';
+    return '撞到墙体';
+  }
+  function startMission() {
+    const lv = Snake.levelById('harbor-route');
+    S.mode = 'easy'; S.daily = false; setSeed(0); S.wins = [0, 0];
+    S.terrain = true; loadLevel(lv.id); S.mission = lv.mission;
+    loadBest(); newGame();
+  }
+  function completeMission() {
+    S.missionWon = true; S.state = 'over'; S.overAt = performance.now();
+    S.msg = '航线完成 · 六个航标全部收集';
+    S.stats.games++; persistStats();
+    const key = 'iso-snake-progress-v1';
+    let progress; try { progress = JSON.parse(safeGet(key, '{}')); } catch (e) {}
+    if (!progress || typeof progress !== 'object' || Array.isArray(progress)) progress = {};
+    const old = progress[S.mission.id];
+    const ms = Math.round(S.elapsed);
+    progress[S.mission.id] = { completed: true, bestMs: old && old.bestMs > 0 ? Math.min(old.bestMs, ms) : ms };
+    safeSet(key, JSON.stringify(progress));
+    S.resultText = '等距贪吃蛇 V' + K.VERSION + ' · 港口航线完成 · ' + (ms / 1000).toFixed(1) + ' 秒';
+    bus.emit('win', { winner: 0, mission: true }); bus.emit('hud');
+  }
+  // 与判定共用地形选层；只提示当前已排队方向的下一格，不替玩家决策。
+  function preview(i = 0) {
+    const p = S.pl[i]; if (!p) return null;
+    const h = p.body[0], d = p.queue[0] || p.dir;
+    const pe = S.T && !p.portCool && portalEdge(h.x, h.y, h.L || 0);
+    if (pe) return { ...pe, safe: !S.pl.some(q => q.body.slice(0, -1).some(n => n.x === pe.x && n.y === pe.y && (n.L || 0) === (pe.L || 0))), portal: true };
+    const x = h.x + d[0], y = h.y + d[1];
+    const pk = S.T ? S.T.pick(x, y, h.L || 0) : null;
+    const L = pk ? pk.h : h.L || 0;
+    const terrainOk = S.T ? !!pk && !gateBlocked(x, y) : !solid(x, y);
+    const occupied = S.pl.some(q => q.body.slice(0, -1).some(n => n.x === x && n.y === y && (n.L || 0) === L));
+    return { x, y, L, safe: terrainOk && !occupied };
+  }
+  function restart() { newGame(); }
+  Snake.api = { startMission, preview, restart, newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, setTerrain, update };
 })();

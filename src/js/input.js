@@ -78,14 +78,17 @@ window.Snake = window.Snake || {};
     $('fs').addEventListener('click', fullscreen);
 
     addEventListener('keydown', e => {
+      if (Snake.Experience && Snake.Experience.captureKey(e)) return;
+      if (e.target && /^(SELECT|INPUT|TEXTAREA|BUTTON)$/.test(e.target.tagName)) return;
+      if (e.repeat) return;
       if (e.code === 'Space' || e.code === 'KeyP') { e.preventDefault(); api.togglePause(); return; }
       const sp = SPKEYS[e.code];
       if (sp !== undefined) { e.preventDefault(); if (S.state !== 'playing') api.start(); api.setHold(S.mode === 'pk' ? sp : 0, true); return; }
       const k1 = K1[e.code], k2 = K2[e.code];
       if (k1 || k2) { e.preventDefault(); api.press(k1 ? 0 : (S.mode === 'pk' ? 1 : 0), k1 || k2); }
     });
-    addEventListener('keyup', e => { const s = SPKEYS[e.code]; if (s !== undefined) api.setHold(S.mode === 'pk' ? s : 0, false); });
-    addEventListener('blur', () => S.pl.forEach(p => p.hold = false));
+    addEventListener('keyup', e => { if (Snake.Experience) Snake.Experience.releaseKey(e); const s = SPKEYS[e.code]; if (s !== undefined) api.setHold(S.mode === 'pk' ? s : 0, false); });
+    addEventListener('blur', () => { S.pl.forEach(p => p.hold = false); if (S.state === 'playing') api.togglePause(); });
     document.addEventListener('visibilitychange', () => { // 切后台自动暂停，回来不会盲走暴毙
       if (document.hidden) { S.pl.forEach(p => p.hold = false); if (S.state === 'playing') api.togglePause(); }
     });
@@ -109,6 +112,7 @@ window.Snake = window.Snake || {};
     document.querySelectorAll('.mode button[data-m]').forEach(b => b.addEventListener('click', () => {
       b.blur(); api.setMode(b.dataset.m); syncModeUi();
     }));
+    Snake.UI.syncModeUi = syncModeUi;
     syncModeUi(); // ?mode= 进入时同样生效（沉浸布局/滚动锁定不再依赖点击）
     drawSwatches();
 
@@ -171,39 +175,31 @@ window.Snake = window.Snake || {};
       if (S.ghostOn) toast('幽灵 = 你破纪录的那局' + (S.ghostMeta ? '（' + S.ghostMeta.score + ' 分 · ' + S.ghostMeta.date + '）' : ''));
     });
     ghostLabel();
-    /* 3D 地形开关：与模式正交——普通/双人/人机都能开，关掉就是 2.0 的原版玩法（用户要求两条线并行） */
-    const terrBtn = $('terrain');
-    const terrLabel = () => { if (!terrBtn) return; terrBtn.textContent = '3D'; terrBtn.classList.toggle('off', !S.terrain); terrBtn.title = '3D 地形：' + (S.terrain ? '开（' + (S.levelName || S.levelId) + '）' : '关'); };
-    if (terrBtn) {
-      terrBtn.addEventListener('click', () => {
-        api.setTerrain(!S.terrain);
-        terrLabel(); syncModeUi();
-        toast(S.terrain ? '3D 地形：开 · ' + (S.levelName || S.levelId) : '3D 地形：关 · 回到原版玩法');
-    /* 3D 关卡下拉：只在 3D 模式下出现；列表直接取关卡注册表（test-24 是自动化测试的最小图，故意不列） */
-    const lvSel = $('lv');
-    const lvSync = () => { if (!lvSel) return; lvSel.value = S.levelId; lvSel.style.display = S.terrain ? 'inline-block' : 'none'; };
+    /* 关卡选择只初始化一次，换图走完整 reset，防止旧蛇身和新层图混用。 */
+    const terrBtn = $('terrain'), lvSel = $('lv');
+    function terrainSync() {
+      if (terrBtn) { terrBtn.textContent = '地形'; terrBtn.classList.toggle('off', !S.terrain); terrBtn.title = '地形：' + (S.terrain ? (S.levelName || S.levelId) : '关'); }
+      if (lvSel) { lvSel.value = S.levelId; lvSel.style.display = S.terrain ? 'inline-block' : 'none'; }
+      ghostLabel();
+    }
     if (lvSel) {
       (Snake.LEVELS || []).filter(l => l.id !== 'test-24').forEach(l => {
-        const TAG = { 'harbor-32': '集装箱/栈桥', 'ridges-40': '断崖带', 'neon-32': '楼块/高架', 'ruins-32': '台阶/断柱', 'lava-32': '岩浆湖', 'ice-32': '冰湖滑行', 'station-32': '闸门/运输带' };
-        const o = document.createElement('option'); o.value = l.id; o.textContent = l.name + (TAG[l.id] ? ' · ' + TAG[l.id] : ''); lvSel.appendChild(o);
+        const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; lvSel.appendChild(o);
       });
       lvSel.addEventListener('change', () => {
-        api.loadLevel(lvSel.value);
-        const lv = Snake.levelById && Snake.levelById(lvSel.value);
-        toast('3D 关卡：' + ((lv && lv.name) || lvSel.value));
+        api.setTerrain(true, lvSel.value); lvSel.blur();
+        toast('关卡：' + S.levelName); terrainSync();
       });
-      bus.on('resize', lvSync);
-    bus.on('themeChange', () => {   // 换主题时结构色会跟着变，明确说一句，免得以为没生效
-      const th = Snake.theme && Snake.theme.current;
-      if (S.terrain && th) toast('主题：' + th.name + ' · 3D 地形已跟随');
+    }
+    if (terrBtn) terrBtn.addEventListener('click', () => {
+      api.setTerrain(!S.terrain); terrBtn.blur(); terrainSync(); syncModeUi();
+      toast(S.terrain ? '地形：' + S.levelName : '经典棋盘');
     });
-      if (terrBtn) terrBtn.addEventListener('click', () => setTimeout(lvSync, 0));   // 开关 3D 后刷新可见性
-      lvSync();
-    }
-        terrBtn.blur();
-      });
-      terrLabel();
-    }
+    bus.on('hud', terrainSync);
+    bus.on('themeChange', () => {
+      if (S.terrain && Snake.theme.current) toast('主题：' + Snake.theme.current.name);
+    });
+    terrainSync();
     function fallbackCopy(txt) {
       try {
         const ta = document.createElement('textarea');
@@ -220,7 +216,7 @@ window.Snake = window.Snake || {};
     $('copy').addEventListener('click', e => {
       e.currentTarget.blur();
       const home = 'https://kkkk16689.github.io/isometric-snake/';
-      const live = '等距贪吃蛇 2.0 · ' + (S.daily ? '每日挑战 种子 ' + S.seed : K.MODE_NAME[S.mode]) + '（进行中，得分 ' + (S.pl[0] ? S.pl[0].score : 0) + '）。来战：' + home + (S.daily ? '?daily=1' : '');
+      const live = '等距贪吃蛇 V' + K.VERSION + ' · ' + (S.daily ? '每日挑战 种子 ' + S.seed : K.MODE_NAME[S.mode]) + '（进行中，得分 ' + (S.pl[0] ? S.pl[0].score : 0) + '）。来战：' + home + (S.daily ? '?daily=1' : '');
       copyText(S.state === 'over' && S.resultText ? S.resultText : live)
         .then(ok => toast(ok ? '成绩已复制，去粘贴分享吧' : '复制失败：请截图分享'));
     });
