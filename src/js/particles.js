@@ -22,7 +22,7 @@ window.Snake = window.Snake || {};
   function scatter(cx, cy, n, cols, up, spd) { // 中心散射：up 越大越向上，spd 为速度基数
     for (let i = 0; i < n; i++) {
       const a = Math.random() * 6.283, v = spd * (.4 + Math.random() * .6);
-      spawn({ x: cx + (Math.random() - .5) * 6, y: cy + (Math.random() - .5) * 4, vx: Math.cos(a) * v, vy: Math.sin(a) * v * .6 - up * (.5 + Math.random() * .5), life: .5 + Math.random() * .4, col: cols[K.rand(cols.length)], size: 2 + Math.random() * 1.5 });
+      spawn({ x: cx + (Math.random() - .5) * 6, y: cy + (Math.random() - .5) * 4, vx: Math.cos(a) * v, vy: Math.sin(a) * v * .6 - up * (.5 + Math.random() * .5), life: .5 + Math.random() * .4, col: cols[Math.floor(Math.random() * cols.length)], size: 2 + Math.random() * 1.5 });
     }
   }
   /* ---------- 事件 → 效果（lowFx 降级表见 spec §2.2） ---------- */

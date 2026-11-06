@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- 源码模板：改样式/逻辑请改 src/css、src/js，再运行 `node build.js` 生成根目录 index.html。
-     根目录 index.html 是构建产物（由 CI 自动更新），不要直接手改。 -->
+     根目录 index.html 是构建产物（由 CI 校验一致性），不要直接手改。 -->
 <html lang="zh">
 <head>
 <meta charset="utf-8">
@@ -125,6 +125,7 @@ body.mm #mm{display:block}
 #lv:focus{outline:none;border-color:rgba(127,212,255,.6)}
 
 /* 3.0 操作层：玩法在前，细项设置按需展开。 */
+.experience-enabled h1{visibility:hidden} /* 保留窄屏布局间距，避免旧标题透过固定任务栏 */
 [hidden]{display:none!important}
 .play-actions{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:5px;z-index:48;padding:5px;border:1px solid #263b50;border-radius:16px;background:rgba(8,18,30,.95);backdrop-filter:blur(12px)}
 .play-actions button{border:0;background:transparent;color:#dbe9ef;font:500 13px system-ui;padding:9px 12px;border-radius:10px;white-space:nowrap;cursor:pointer}
@@ -495,6 +496,7 @@ window.Snake = window.Snake || {};
     bus.emit('hud');
   }
   function newGame() {
+    stopSprints();
     const m = K.MODES[S.mode];
     if (tsOn()) { if (!S.T) loadLevel(S.levelId || 'neon-32'); setSize(S.T.w, viewN()); }   // 3D：按关卡建层图，视口按模式定
     else { S.T = null; setSize(m.n, m.n); }   // 未开 3D：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
@@ -599,7 +601,7 @@ window.Snake = window.Snake || {};
       const p = S.pl[0];
       if (hit[0]) {
         p.lives--; p.streak = 0;
-        if (p.lives > 0) { bus.emit('crash', { heads: [hs[0]], partial: true }); spawn(0, p); S.state = 'paused'; S.msg = S.deathReasons[0] + ' · 还剩 ' + p.lives + ' 条命'; bus.emit('hud'); }
+        if (p.lives > 0) { bus.emit('crash', { heads: [hs[0]], partial: true }); stopSprints(); spawn(0, p); S.state = 'paused'; S.msg = S.deathReasons[0] + ' · 还剩 ' + p.lives + ' 条命'; bus.emit('hud'); }
         else gameOver();
         return;
       }
@@ -646,6 +648,7 @@ window.Snake = window.Snake || {};
     bus.emit('hud');
   }
   function gameOver() {
+    stopSprints();
     S.state = 'over'; S.overAt = performance.now();
     S.stats.games++; persistStats();
     if (K.MODES[S.mode].players === 1) {
@@ -669,7 +672,8 @@ window.Snake = window.Snake || {};
 
   /* ---------- 状态机 api ---------- */
   function start() { if (S.state === 'over') { if (performance.now() - S.overAt < 1200) return; newGame(); } S.state = 'playing'; S.msg = ''; S.last = performance.now(); } // 结算界面 1.2s 锁，防连点跳过
-  function togglePause() { if (S.state === 'playing') { S.state = 'paused'; S.msg = ''; } else start(); }
+  function stopSprints() { S.pl.forEach((p, i) => { p.hold = false; if (p.sprint) bus.emit('sprintOff', { i }); p.sprint = false; }); }
+  function togglePause() { if (S.state === 'playing') { stopSprints(); S.state = 'paused'; S.msg = ''; } else start(); }
   function press(i, name) { if (S.state !== 'playing') { start(); if (S.state !== 'playing') return; } if (S.pl[i]) steer(S.pl[i], name); }
   const setHold = (i, v) => { if (S.pl[i]) S.pl[i].hold = v; };
   function setMode(m) {
@@ -756,6 +760,7 @@ window.Snake = window.Snake || {};
     loadBest(); newGame();
   }
   function completeMission() {
+    stopSprints();
     S.missionWon = true; S.state = 'over'; S.overAt = performance.now();
     S.msg = '航线完成 · 六个航标全部收集';
     S.stats.games++; persistStats();
@@ -785,6 +790,7 @@ window.Snake = window.Snake || {};
   function restart() { newGame(); }
   Snake.api = { startMission, preview, restart, newGame, reset: () => { loadBest(); newGame(); }, start, togglePause, press, setHold, setMode, setSkin, startDaily, setGhostOn, startExpedition, loadLevel, setTerrain, update };
 })();
+
 </script>
 <script>
 /* levels.js —— 关卡注册表（数据，不含规则）
@@ -1838,7 +1844,7 @@ window.Snake = window.Snake || {};
   function scatter(cx, cy, n, cols, up, spd) { // 中心散射：up 越大越向上，spd 为速度基数
     for (let i = 0; i < n; i++) {
       const a = Math.random() * 6.283, v = spd * (.4 + Math.random() * .6);
-      spawn({ x: cx + (Math.random() - .5) * 6, y: cy + (Math.random() - .5) * 4, vx: Math.cos(a) * v, vy: Math.sin(a) * v * .6 - up * (.5 + Math.random() * .5), life: .5 + Math.random() * .4, col: cols[K.rand(cols.length)], size: 2 + Math.random() * 1.5 });
+      spawn({ x: cx + (Math.random() - .5) * 6, y: cy + (Math.random() - .5) * 4, vx: Math.cos(a) * v, vy: Math.sin(a) * v * .6 - up * (.5 + Math.random() * .5), life: .5 + Math.random() * .4, col: cols[Math.floor(Math.random() * cols.length)], size: 2 + Math.random() * 1.5 });
     }
   }
   /* ---------- 事件 → 效果（lowFx 降级表见 spec §2.2） ---------- */
@@ -1903,6 +1909,7 @@ window.Snake = window.Snake || {};
   }
   Snake.Fx = { spawn, trail, update, draw };
 })();
+
 </script>
 <script>
 /* render.js —— 一切 canvas 绘制。只读状态；不改游戏状态（lowFx 检测除外）。 */
@@ -2950,7 +2957,7 @@ window.Snake = window.Snake || {};
     document.querySelectorAll('.pad .sp').forEach(b => { // 按住冲刺
       const i = +b.parentElement.dataset.p;
       b.addEventListener('pointerdown', e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (err) {} if (S.state !== 'playing') api.start(); api.setHold(i, true); });
-      ['pointerup', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => api.setHold(i, false)));
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => b.addEventListener(ev, () => api.setHold(i, false)));
       b.addEventListener('contextmenu', e => e.preventDefault());
     });
     const wideMQ = window.matchMedia ? matchMedia('(orientation: landscape), (min-width: 760px)') : { matches: false, addEventListener() {} };
@@ -2972,22 +2979,31 @@ window.Snake = window.Snake || {};
     // 棋盘滑动转向 / 点按暂停（短距+短按才算点按，慢按与小拖动不再误触暂停）
     // 转向在「越过阈值」的瞬间就生效，不再等抬手——抬手才判定会白白多等一整个手势的时间。
     const SWIPE_MIN = 20;
-    let sx0 = 0, sy0 = 0, st0 = 0, fired = false;
+    let sx0 = 0, sy0 = 0, st0 = 0, fired = false, pointer = null;
     const cv = $('c');
     const swipe = e => {
       const dx = e.clientX - sx0, dy = e.clientY - sy0;
-      if (fired || S.mode === 'pk' || Math.hypot(dx, dy) < SWIPE_MIN) return;
+      if (pointer === null || (e.pointerId ?? 0) !== pointer || fired || S.mode === 'pk' || Math.hypot(dx, dy) < SWIPE_MIN) return;
       fired = true;
       // 滑动按屏幕象限直接对应一个格方向（右上/右下/左下/左上）——等距下「取主轴」会整体偏 45°
       api.press(0, dx > 0 ? (dy > 0 ? 'right' : 'up') : (dy > 0 ? 'down' : 'left'));
     };
-    cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; st0 = performance.now(); fired = false; });
+    cv.addEventListener('pointerdown', e => {
+      if (pointer !== null || (e.button !== undefined && e.button !== 0)) return;
+      pointer = e.pointerId ?? 0; sx0 = e.clientX; sy0 = e.clientY; st0 = performance.now(); fired = false;
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    });
     cv.addEventListener('pointermove', e => { if (e.buttons || e.pointerType !== 'mouse') swipe(e); });
     cv.addEventListener('pointerup', e => {
+      if (pointer === null || (e.pointerId ?? 0) !== pointer) return;
       const dx = e.clientX - sx0, dy = e.clientY - sy0, dist = Math.hypot(dx, dy);
-      if (!fired && dist < 16 && performance.now() - st0 < 300) return api.togglePause();
-      swipe(e);   // 慢速拖动（未达阈值前就抬手）兜底
+      if (!fired && dist < 16 && performance.now() - st0 < 300) api.togglePause();
+      else swipe(e);   // 慢速拖动（未达阈值前就抬手）兜底
+      pointer = null;
     });
+    ['pointercancel', 'lostpointercapture'].forEach(ev => cv.addEventListener(ev, e => { if ((e.pointerId ?? 0) === pointer) pointer = null; }));
+    addEventListener('blur', () => { pointer = null; });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) pointer = null; });
 
     /* ---------- 震动反馈（移动端）：吃食/撞击/起冲轻震，可一键关闭并持久化 ---------- */
     const RM = matchMedia('(prefers-reduced-motion: reduce)');   // 系统「减弱动态」：同时禁震动
@@ -3095,6 +3111,7 @@ window.Snake = window.Snake || {};
   }
   Snake.UI = { init, updateHud };
 })();
+
 </script>
 <script>
 /* experience.js — 主页、路线进度与独立方向练习；不写入蛇身或修改规则。 */
@@ -3216,6 +3233,7 @@ window.Snake = window.Snake || {};
     assist.addEventListener('click', () => { S.assist = !S.assist; K.safeSet('iso-snake-assist', S.assist ? '1' : '0'); assist.setAttribute('aria-pressed', String(S.assist)); assist.blur(); });
     const oldTick = Snake.uiTick; Snake.uiTick = () => { if (oldTick) oldTick(); tick(); };
     addEventListener('blur', cancelHold);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelHold(); });
     const qs = new URLSearchParams(location.search);
     if (![...qs.keys()].some(k => ['mode','terrain','level','daily','seed','autostart'].includes(k))) home();
     tick();

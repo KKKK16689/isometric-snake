@@ -97,7 +97,7 @@ window.Snake = window.Snake || {};
     document.querySelectorAll('.pad .sp').forEach(b => { // 按住冲刺
       const i = +b.parentElement.dataset.p;
       b.addEventListener('pointerdown', e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (err) {} if (S.state !== 'playing') api.start(); api.setHold(i, true); });
-      ['pointerup', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => api.setHold(i, false)));
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => b.addEventListener(ev, () => api.setHold(i, false)));
       b.addEventListener('contextmenu', e => e.preventDefault());
     });
     const wideMQ = window.matchMedia ? matchMedia('(orientation: landscape), (min-width: 760px)') : { matches: false, addEventListener() {} };
@@ -119,22 +119,31 @@ window.Snake = window.Snake || {};
     // 棋盘滑动转向 / 点按暂停（短距+短按才算点按，慢按与小拖动不再误触暂停）
     // 转向在「越过阈值」的瞬间就生效，不再等抬手——抬手才判定会白白多等一整个手势的时间。
     const SWIPE_MIN = 20;
-    let sx0 = 0, sy0 = 0, st0 = 0, fired = false;
+    let sx0 = 0, sy0 = 0, st0 = 0, fired = false, pointer = null;
     const cv = $('c');
     const swipe = e => {
       const dx = e.clientX - sx0, dy = e.clientY - sy0;
-      if (fired || S.mode === 'pk' || Math.hypot(dx, dy) < SWIPE_MIN) return;
+      if (pointer === null || (e.pointerId ?? 0) !== pointer || fired || S.mode === 'pk' || Math.hypot(dx, dy) < SWIPE_MIN) return;
       fired = true;
       // 滑动按屏幕象限直接对应一个格方向（右上/右下/左下/左上）——等距下「取主轴」会整体偏 45°
       api.press(0, dx > 0 ? (dy > 0 ? 'right' : 'up') : (dy > 0 ? 'down' : 'left'));
     };
-    cv.addEventListener('pointerdown', e => { sx0 = e.clientX; sy0 = e.clientY; st0 = performance.now(); fired = false; });
+    cv.addEventListener('pointerdown', e => {
+      if (pointer !== null || (e.button !== undefined && e.button !== 0)) return;
+      pointer = e.pointerId ?? 0; sx0 = e.clientX; sy0 = e.clientY; st0 = performance.now(); fired = false;
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    });
     cv.addEventListener('pointermove', e => { if (e.buttons || e.pointerType !== 'mouse') swipe(e); });
     cv.addEventListener('pointerup', e => {
+      if (pointer === null || (e.pointerId ?? 0) !== pointer) return;
       const dx = e.clientX - sx0, dy = e.clientY - sy0, dist = Math.hypot(dx, dy);
-      if (!fired && dist < 16 && performance.now() - st0 < 300) return api.togglePause();
-      swipe(e);   // 慢速拖动（未达阈值前就抬手）兜底
+      if (!fired && dist < 16 && performance.now() - st0 < 300) api.togglePause();
+      else swipe(e);   // 慢速拖动（未达阈值前就抬手）兜底
+      pointer = null;
     });
+    ['pointercancel', 'lostpointercapture'].forEach(ev => cv.addEventListener(ev, e => { if ((e.pointerId ?? 0) === pointer) pointer = null; }));
+    addEventListener('blur', () => { pointer = null; });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) pointer = null; });
 
     /* ---------- 震动反馈（移动端）：吃食/撞击/起冲轻震，可一键关闭并持久化 ---------- */
     const RM = matchMedia('(prefers-reduced-motion: reduce)');   // 系统「减弱动态」：同时禁震动

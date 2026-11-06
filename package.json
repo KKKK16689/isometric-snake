@@ -5,9 +5,14 @@
   "description": "等距贪吃蛇 V3.0.0：多层地形、港口航线、方向练习与同屏对战",
   "scripts": {
     "build": "node build.js",
+    "build:check": "node build.js --check",
     "icons": "node tools/gen-icons.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "test:browser": "node tools/browser-regression.cjs"
   },
   "license": "MIT",
-  "author": "孔垂瑞"
+  "author": "孔垂瑞",
+  "devDependencies": {
+    "playwright": "1.65.0"
+  }
 }
