@@ -726,6 +726,25 @@ function routeDirection(S, goal) {
 }
 const SnakeDirs = { up: [0,-1], right: [1,0], down: [0,1], left: [-1,0] };
 
+test('高度 2：平地不能穿入实心高台；桥下通行保持在地面层', () => {
+  for (const bridge of [false,true]) {
+    const sb=load('',false,true), {api,S}=sb.Snake;
+    api.setMode('normal'); api.setTerrain(true,'harbor-route');
+    const p=S.pl[0];
+    if (bridge) {
+      p.body=[{x:4,y:5,L:0},{x:4,y:6,L:0},{x:4,y:7,L:0}]; p.dir=[0,-1];
+    } else {
+      // 夹具移除北侧台阶，直接制造 h0 → 实心 h2 的两层落差。
+      S.T.cells[13][3]=[{h:0,kind:'ground',walkable:true}];
+      p.body=[{x:13,y:3,L:0},{x:13,y:2,L:0},{x:13,y:1,L:0}]; p.dir=[0,1];
+    }
+    p.queue=[]; api.start(); moveOnce(sb,p);
+    assert.equal(S.state,bridge?'playing':'over');
+    assert.equal(p.body[0].L,0);
+    assert.equal(p.body[0].y,bridge?4:3,'实心台不能进入，桥下只能在地面通过');
+  }
+});
+
 test('港口六段：全程按住冲刺可通关，通关释放冲刺；更慢重试保留最佳用时', () => {
   const sb = load('',false,true), {api,S,bus} = sb.Snake;
   api.startMission(); api.start(); api.setHold(0,true);

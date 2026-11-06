@@ -843,6 +843,58 @@ test('集成：远征渲染成本——地形块每帧绘制量有预算，静�
 });
 
 /* ---------- 3D 结构色跟随主题（方案 A） ---------- */
+test('桥下净空：桥面侧壁不能封到地面，实心高台仍保留完整侧壁', () => {
+  const H=makeDom({search:'?level=harbor-route&mode=normal'}); boot(H);
+  const ctx=H.cv.getContext('2d'), polygons=[]; let points=[];
+  const begin=ctx.beginPath,move=ctx.moveTo,line=ctx.lineTo,fill=ctx.fill;
+  ctx.beginPath=()=>{points=[];begin();};
+  ctx.moveTo=(x,y)=>{points.push([x,y]);move(x,y);};
+  ctx.lineTo=(x,y)=>{points.push([x,y]);line(x,y);};
+  ctx.fill=()=>{polygons.push({points:points.slice(),color:ctx.fillStyle});fill();};
+  const measure=(x,y,L)=>{
+    const p=H.S.pl[0];p.body=[{x,y,L}];p.queue=[];p.moveP=0;H.S.state='paused';
+    polygons.length=0;H.drive(1);
+    const [cx,anchor]=H.sb.Snake.Render.toScreen(x,y,0),cy=anchor+6,a=15*.94,b=7.5*.94,top=18;
+    const colors=H.sb.Snake.Render.terrainColors();
+    // 从完整绘制结果选中该格朝前的左侧面，而非桥的支柱/顶面。
+    const side=polygons.find(o=>o.color===colors[1]&&o.points.length===4&&
+      Math.abs(o.points[0][0]-(cx-a))<.001&&Math.abs(o.points[0][1]-(cy-top))<.001&&
+      Math.abs(o.points[1][0]-cx)<.001&&Math.abs(o.points[1][1]-(cy+b-top))<.001);
+    assert.ok(side,'该格侧面必须实际参与绘制');
+    return side.points[2][1]-side.points[1][1];
+  };
+  const bridgeWall=measure(4,4,0);
+  assert.ok(18-bridgeWall>=9,'h2 桥下必须留得下 9px 高的蛇头，实际净空 '+(18-bridgeWall));
+  assert.equal(measure(13,4,2),18,'实心 h2 高台不能被改成空心桥');
+});
+
+test('桥上下层遮挡：眼睛和落点提示与所在层一起排序，不浮在上层桥面上', () => {
+  for (const L of [0,2]) {
+    const H=makeDom({search:'?level=harbor-route&mode=normal'}); boot(H);
+    const p=H.S.pl[0];p.body=[{x:4,y:4,L}];p.dir=[1,0];p.queue=[];p.moveP=0;
+    H.S.state='paused';H.S.assist=true;
+    const ctx=H.cv.getContext('2d'),ops=[];let points=[],radius=0;
+    const begin=ctx.beginPath,move=ctx.moveTo,line=ctx.lineTo,arc=ctx.arc,fill=ctx.fill,stroke=ctx.stroke;
+    ctx.beginPath=()=>{points=[];radius=0;begin();};
+    ctx.moveTo=(x,y)=>{points.push([x,y]);move(x,y);};
+    ctx.lineTo=(x,y)=>{points.push([x,y]);line(x,y);};
+    ctx.arc=(...a)=>{radius=a[2];arc(...a);};
+    ctx.fill=()=>{ops.push({kind:radius===2&&ctx.fillStyle==='#fff'?'eye':'fill',color:ctx.fillStyle,alpha:ctx.globalAlpha,points:points.slice()});fill();};
+    ctx.stroke=()=>{ops.push({kind:ctx.strokeStyle==='#9cf3cf'?'assist':'stroke'});stroke();};
+    H.drive(1);
+    const deckAt=x=>{
+      const [cx,anchor]=H.sb.Snake.Render.toScreen(x,4,0),cy=anchor+6;
+      return ops.findIndex(o=>o.kind==='fill'&&o.color===H.sb.Snake.Render.terrainColors()[0]&&o.points.length===4&&
+        Math.abs(o.points[0][0]-cx)<.001&&Math.abs(o.points[0][1]-(cy-18-7.5*.94))<.001);
+    };
+    const eye=ops.findIndex(o=>o.kind==='eye'),assist=ops.findIndex(o=>o.kind==='assist'),headDeck=deckAt(4),nextDeck=deckAt(5);
+    assert.ok([eye,assist,headDeck,nextDeck].every(i=>i>=0),'眼睛、提示及两格桥面都必须实际绘制');
+    assert.equal(ops[headDeck].alpha,1,'桥面保持不透明，桥下位置用轮廓提示，不能透出实体眼睛');
+    if(L===0){assert.ok(eye<headDeck,'桥下眼睛必须被上层桥面遮挡');assert.ok(assist<nextDeck,'地面落点提示不能浮在桥面上');}
+    else{assert.ok(eye>headDeck,'桥上眼睛必须在桥面之后绘制');assert.ok(assist>nextDeck,'桥面落点提示必须位于桥面上方');}
+  }
+});
+
 test('3D 地形：结构色 = biome 基色 × 主题强调色，换主题就变（语义材质不参与）', () => {
   const H = makeDom({ search: '?terrain=1&level=neon-32', dpr: 1 });
   boot(H);
