@@ -117,6 +117,7 @@ window.Snake = window.Snake || {};
     assist.addEventListener('click', () => { S.assist = !S.assist; K.safeSet('iso-snake-assist', S.assist ? '1' : '0'); assist.setAttribute('aria-pressed', String(S.assist)); assist.blur(); });
     const oldTick = Snake.uiTick; Snake.uiTick = () => { if (oldTick) oldTick(); tick(); };
     addEventListener('blur', cancelHold);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelHold(); });
     const qs = new URLSearchParams(location.search);
     if (![...qs.keys()].some(k => ['mode','terrain','level','daily','seed','autostart'].includes(k))) home();
     tick();

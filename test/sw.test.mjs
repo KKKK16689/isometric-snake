@@ -13,14 +13,14 @@ function res(body) {
   return { status: 200, type: 'basic', body, clone: () => res(body) };
 }
 
-function loadSW() {
+function loadSW(base = ORIGIN + '/') {
   const store = new Map();          // cacheName -> Map(绝对URL -> response)
   const events = {};                // type -> handler
   const waits = [];
   const responded = [];
   const flags = { skipWaiting: false, claim: false, precached: [], deleted: [] };
 
-  const resolveKey = u => new URL(u, ORIGIN).href;
+  const resolveKey = u => new URL(u, base).href;
   const cachesStub = {
     open: name => {
       if (!store.has(name)) store.set(name, new Map());
@@ -44,7 +44,7 @@ function loadSW() {
   };
 
   const sandbox = {
-    URL, Promise, Math, console,
+    URL, Promise, Math, console, Response,
     location: { origin: ORIGIN },
     caches: cachesStub,
     fetchOnline: true,
@@ -63,7 +63,7 @@ function loadSW() {
   const install = () => { fire('install', { waitUntil: p => waits.push(p) }); };
   const activate = () => { fire('activate', { waitUntil: p => waits.push(p) }); };
   const fetchEv = (url, mode) => {
-    const ev = { request: { method: 'GET', url, mode }, respondWith: p => responded.push(p) };
+    const ev = { request: { method: 'GET', url, mode }, waitUntil: p => waits.push(p), respondWith: p => responded.push(p) };
     fire('fetch', ev);
     return responded[responded.length - 1];
   };
@@ -71,6 +71,48 @@ function loadSW() {
 }
 
 const flush = async () => { for (let i = 0; i < 4; i++) await new Promise(r => setTimeout(r, 0)); };
+
+test('SW 激活只删本游戏旧缓存，保留同源其他应用与当前缓存', async () => {
+  const H = loadSW(); H.install(); await Promise.all(H.waits.splice(0));
+  const current = [...H.store.keys()][0];
+  for (const name of ['iso-snake-old', 'other-app-v1', 'iso-snakeboard']) H.store.set(name, new Map());
+  H.activate(); await Promise.all(H.waits.splice(0));
+  assert.deepEqual(H.flags.deleted, ['iso-snake-old']);
+  for (const name of [current, 'other-app-v1', 'iso-snakeboard']) assert.ok(H.store.has(name));
+});
+
+test('SW 冷缓存断网：导航和资源均返回明确的 503 Response', async () => {
+  const H = loadSW(); H.sandbox.fetchOnline = false;
+  for (const mode of ['navigate', 'cors']) {
+    const r = await H.fetchEv(ORIGIN + '/missing', mode);
+    assert.ok(r instanceof Response);
+    assert.equal(r.status, 503);
+    assert.equal(r.headers.get('Cache-Control'), 'no-store');
+  }
+});
+
+test('SW 只读本版本缓存，不将其他应用页面作为游戏壳', async () => {
+  const H = loadSW(); H.sandbox.fetchOnline = false;
+  H.store.set('other-app', new Map([[ORIGIN + '/index.html', res('FOREIGN')]]));
+  const r = await H.fetchEv(ORIGIN + '/?daily=1', 'navigate');
+  assert.equal(r.status, 503);
+});
+
+test('SW 子路径部署离线导航命中本游戏外壳', async () => {
+  const H = loadSW(ORIGIN + '/isometric-snake/');
+  H.install(); await Promise.all(H.waits.splice(0)); H.sandbox.fetchOnline = false;
+  const r = await H.fetchEv(ORIGIN + '/isometric-snake/?daily=1', 'navigate');
+  assert.equal(r.body, 'PRECACHE:./index.html');
+});
+
+test('SW 缓存写入失败不影响网络响应，后台刷新受 waitUntil 保护', async () => {
+  const H = loadSW();
+  H.sandbox.caches.open = async () => ({ match: async () => undefined, put: async () => { throw new Error('quota'); } });
+  const r = await H.fetchEv(ORIGIN + '/asset');
+  assert.equal(r.body, 'NET:' + ORIGIN + '/asset');
+  assert.ok(H.waits.length > 0, '后台写入必须延长事件生命周期');
+  await Promise.all(H.waits);
+});
 
 test('SW 生命周期：install 预缓存外壳并 skipWaiting，activate 清旧缓存并接管页面', async () => {
   const H = loadSW();
@@ -114,7 +156,7 @@ test('SW 导航网络优先：在线刷新一定拿到最新构建（防「刷�
   assert.equal(H.store.get(cacheName).get(url).body, 'NET:' + url);   // 顺手写回缓存，断网仍可玩
 });
 
-test('SW 断网：导航回退缓存壳，资源回 undefined，跨域与 POST 不接管', async () => {
+test('SW 断网：导航回退缓存壳，无缓存资源返回 503，跨域与 POST 不接管', async () => {
   const H = loadSW();
   H.install();
   await Promise.all(H.waits.splice(0));
@@ -124,9 +166,10 @@ test('SW 断网：导航回退缓存壳，资源回 undefined，跨域与 POST �
   const nav = await H.fetchEv(ORIGIN + '/?daily=1&seed=777', 'navigate');
   assert.equal(nav.body, 'PRECACHE:./index.html');
 
-  // 没缓存过的普通资源 → undefined（浏览器按失败处理）
+  // 没缓存过的普通资源必须给浏览器有效 Response。
   const asset = await H.fetchEv(ORIGIN + '/README.md');
-  assert.equal(asset, undefined);
+  assert.equal(asset.status, 503);
+  assert.match(await asset.text(), /offline/i);
 
   // 缓存过的地址断网仍命中
   const hit = await H.fetchEv(ORIGIN + '/manifest.webmanifest');
@@ -146,7 +189,10 @@ test('SW legacy 直通：/legacy/ 存档页不接管——不缓存、断网也�
   const before = H.responded.length;
   H.fetchEv(ORIGIN + '/legacy/');
   H.fetchEv(ORIGIN + '/legacy/index.html');
+  H.fetchEv(ORIGIN + '/legacy20/');
+  H.fetchEv(ORIGIN + '/legacy20/index.html');
   H.sandbox.fetchOnline = false;
   H.fetchEv(ORIGIN + '/legacy/', 'navigate');
-  assert.equal(H.responded.length, before, '/legacy/ 一律不进 respondWith');
+  H.fetchEv(ORIGIN + '/legacy20/', 'navigate');
+  assert.equal(H.responded.length, before, '两版历史存档均不进 respondWith');
 });

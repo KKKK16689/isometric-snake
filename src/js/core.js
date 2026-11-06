@@ -278,6 +278,7 @@ window.Snake = window.Snake || {};
     bus.emit('hud');
   }
   function newGame() {
+    stopSprints();
     const m = K.MODES[S.mode];
     if (tsOn()) { if (!S.T) loadLevel(S.levelId || 'neon-32'); setSize(S.T.w, viewN()); }   // 3D：按关卡建层图，视口按模式定
     else { S.T = null; setSize(m.n, m.n); }   // 未开 3D：清掉层图、视口=棋盘（2.0 行为与视觉都不变）
@@ -382,7 +383,7 @@ window.Snake = window.Snake || {};
       const p = S.pl[0];
       if (hit[0]) {
         p.lives--; p.streak = 0;
-        if (p.lives > 0) { bus.emit('crash', { heads: [hs[0]], partial: true }); spawn(0, p); S.state = 'paused'; S.msg = S.deathReasons[0] + ' · 还剩 ' + p.lives + ' 条命'; bus.emit('hud'); }
+        if (p.lives > 0) { bus.emit('crash', { heads: [hs[0]], partial: true }); stopSprints(); spawn(0, p); S.state = 'paused'; S.msg = S.deathReasons[0] + ' · 还剩 ' + p.lives + ' 条命'; bus.emit('hud'); }
         else gameOver();
         return;
       }
@@ -429,6 +430,7 @@ window.Snake = window.Snake || {};
     bus.emit('hud');
   }
   function gameOver() {
+    stopSprints();
     S.state = 'over'; S.overAt = performance.now();
     S.stats.games++; persistStats();
     if (K.MODES[S.mode].players === 1) {
@@ -452,7 +454,8 @@ window.Snake = window.Snake || {};
 
   /* ---------- 状态机 api ---------- */
   function start() { if (S.state === 'over') { if (performance.now() - S.overAt < 1200) return; newGame(); } S.state = 'playing'; S.msg = ''; S.last = performance.now(); } // 结算界面 1.2s 锁，防连点跳过
-  function togglePause() { if (S.state === 'playing') { S.state = 'paused'; S.msg = ''; } else start(); }
+  function stopSprints() { S.pl.forEach((p, i) => { p.hold = false; if (p.sprint) bus.emit('sprintOff', { i }); p.sprint = false; }); }
+  function togglePause() { if (S.state === 'playing') { stopSprints(); S.state = 'paused'; S.msg = ''; } else start(); }
   function press(i, name) { if (S.state !== 'playing') { start(); if (S.state !== 'playing') return; } if (S.pl[i]) steer(S.pl[i], name); }
   const setHold = (i, v) => { if (S.pl[i]) S.pl[i].hold = v; };
   function setMode(m) {
@@ -539,6 +542,7 @@ window.Snake = window.Snake || {};
     loadBest(); newGame();
   }
   function completeMission() {
+    stopSprints();
     S.missionWon = true; S.state = 'over'; S.overAt = performance.now();
     S.msg = '航线完成 · 六个航标全部收集';
     S.stats.games++; persistStats();

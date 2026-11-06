@@ -1,5 +1,5 @@
 /* integration.test.mjs —— DOM 集成层冒烟测试（零依赖，node --test）
-   用最小 DOM / Canvas2D / WebAudio 桩按 src/index.html 的真实顺序加载全部 8 个模块，
+   用最小 DOM / Canvas2D / WebAudio 桩加载 10 个底层模块（主页 experience 由真实浏览器回归覆盖），
    确定性驱动 rAF 帧循环与事件，跑通渲染、输入、音频、主题的完整代码路径。
    抓的是 vm 纯逻辑测试抓不到的集成 bug：元素 id 打错、draw 路径笔误、启动顺序依赖。 */
 import test from 'node:test';
@@ -12,6 +12,41 @@ const DIR = import.meta.dirname;
 const SRC = path.join(DIR, '..', 'src', 'js');
 const FILES = ['core', 'levels', 'terrain', 'themes', 'patterns', 'audio', 'particles', 'render', 'ai', 'input'];   // index.html 的 <script> 顺序
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+
+test('触屏边界：忽略悬停、第二根手指，取消后不误转向或暂停', () => {
+  const H = makeDom(); boot(H); H.api.start();
+  const touch = (type, id, x, y) => H.fireEl(H.cv, type, {pointerId:id, pointerType:'touch', clientX:x, clientY:y});
+  touch('pointermove', 1, 150, 100);
+  assert.equal(H.S.pl[0].queue.length, 0, '未按下不能滑动');
+  touch('pointerdown', 1, 100, 100);
+  touch('pointerdown', 2, 200, 200);
+  touch('pointerup', 2, 200, 200);
+  assert.equal(H.S.state, 'playing', '第二指抬手不能暂停');
+  touch('pointermove', 1, 140, 60);
+  assert.deepEqual(Array.from(H.S.pl[0].queue[0]), [0,-1]);
+  H.S.pl[0].queue = [];
+  touch('pointercancel', 1, 140, 60);
+  touch('pointermove', 1, 100, 150);
+  touch('pointerup', 1, 100, 100);
+  assert.equal(H.S.pl[0].queue.length, 0);
+  assert.equal(H.S.state, 'playing');
+});
+
+test('触屏冲刺：捕获丢失和取消均释放按住状态', () => {
+  const H = makeDom(); boot(H);
+  for (const event of ['lostpointercapture', 'pointercancel']) {
+    H.fireEl(H.sp0, 'pointerdown', {pointerId:1});
+    assert.equal(H.S.pl[0].hold, true);
+    H.fireEl(H.sp0, event, {pointerId:1});
+    assert.equal(H.S.pl[0].hold, false, event);
+  }
+});
+
+test('视觉粒子不得消耗每日挑战的逻辑随机序列', () => {
+  const a = makeDom({search:'?seed=777'}), b = makeDom({search:'?seed=777'}); boot(a); boot(b);
+  a.sb.Snake.bus.emit('eat', {x:4,y:6,L:0,streak:1,pts:1,i:0});
+  assert.equal(a.sb.Snake.K.rand(1000000), b.sb.Snake.K.rand(1000000));
+});
 
 /* ---------- 最小 DOM 桩 ---------- */
 function El(tag) {
@@ -318,6 +353,7 @@ test('集成：触屏（pad/滑动/点按）+ 冲刺键 + resize + 切后台暂�
   H.fireEl(H.cv, 'pointermove', { clientX: 400, clientY: 300, pointerType: 'mouse', buttons: 0 });
   assert.equal(pressed, null, '鼠标未按下时移动不应转向');
   H.sb.Snake.api.press = realPress;
+  H.fireEl(H.cv, 'pointercancel', {});  // 结束上一段鼠标手势后再开始新的点按
   // 点按暂停：<16px 且 <300ms
   H.fireEl(H.cv, 'pointerdown', { clientX: 200, clientY: 200 });
   H.drive(1);
@@ -625,8 +661,10 @@ test('经典模式视觉锁：90 帧绘制轨迹摘要恒定（Stage 1-5 改地�
   const a = digest(20261025), b = digest(7);
   assert.ok(a.ops > 800 && b.ops > 800, '绘制轨迹太短，锁不住画面（' + a.ops + ' / ' + b.ops + ' 条）');
   assert.notEqual(a.h, b.h, '不同种子的轨迹摘要必须不同（否则说明摘要退化成常量、锁不住任何东西）');
-  assert.equal(a.h, 0x4624de5f, '种子 20261025 的绘制轨迹变了：' + a.h.toString(16) + '（' + a.ops + ' 条 / ' + a.n + ' 张画布）');   // 2026-10-25 手感：移动首帧改为「缓出 + 8ms 起势」（按下后首帧就看得见位移），摘要随之更新；绘制条数不变
-  assert.equal(b.h, 0xc5d88f37, '种子 7 的绘制轨迹变了：' + b.h.toString(16) + '（' + b.ops + ' 条 / ' + b.n + ' 张画布）');
+  // 2026-11-06：粒子选色移出逻辑种子流；食物/金苹果序列不再由视觉效果消耗随机数，故更新两种种子的视觉基线。
+  // core 行为摘要、插值单调性和渲染预算仍独立验证；不可用更新摘要掩盖几何/手感变化。
+  assert.equal(a.h, 0x4386dc52, '种子 20261025 的绘制轨迹变了：' + a.h.toString(16) + '（' + a.ops + ' 条 / ' + a.n + ' 张画布）');
+  assert.equal(b.h, 0xa1983177, '种子 7 的绘制轨迹变了：' + b.h.toString(16) + '（' + b.ops + ' 条 / ' + b.n + ' 张画布）');
 });
 
 /* ---------- 渲染成本护栏：主画布每帧绘制量在预算内；静态地板缓存必须远低于主画布（不许逐帧重画全图） ---------- */

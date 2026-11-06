@@ -5,7 +5,7 @@
 const fs = require('fs'), path = require('path');
 const ROOT = __dirname, SRC = path.join(ROOT, 'src'), OUT = path.join(ROOT, 'index.html');
 const err = m => { console.error('[build] ' + m); process.exit(1); };
-const read = a => { try { return fs.readFileSync(a, 'utf8'); } catch (e) { err('缺失文件: ' + path.relative(ROOT, a)); } };
+const read = a => { try { return fs.readFileSync(a, 'utf8').replace(/\r\n/g, '\n'); } catch (e) { err('缺失文件: ' + path.relative(ROOT, a)); } };
 
 let html = read(path.join(SRC, 'index.html'));
 let cssN = 0, jsN = 0;
@@ -17,5 +17,10 @@ html = html.replace(/<script\b[^>]*?\bsrc=["']([^"']+)["'][^>]*?>\s*<\/script>/g
   jsN++;
   return '<script>\n' + read(path.join(SRC, src)) + '\n</script>'; // 内联在 body 原位，保证执行顺序
 });
-fs.writeFileSync(OUT, html);
-console.log('[build] OK → index.html（CSS ×' + cssN + ' · JS ×' + jsN + ' · ' + (Buffer.byteLength(html) / 1024).toFixed(1) + 'KB）');
+if (process.argv.includes('--check')) {
+  if (read(OUT) !== html) err('index.html 与 src 不一致，请先运行 npm run build');
+  console.log('[build] CHECK OK → index.html 与 src 一致');
+} else {
+  fs.writeFileSync(OUT, html);
+  console.log('[build] OK → index.html（CSS ×' + cssN + ' · JS ×' + jsN + ' · ' + (Buffer.byteLength(html) / 1024).toFixed(1) + 'KB）');
+}

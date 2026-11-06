@@ -96,6 +96,7 @@ body.mm #mm{display:block}
 #lv:focus{outline:none;border-color:rgba(127,212,255,.6)}
 
 /* 3.0 操作层：玩法在前，细项设置按需展开。 */
+.experience-enabled h1{visibility:hidden} /* 保留窄屏布局间距，避免旧标题透过固定任务栏 */
 [hidden]{display:none!important}
 .play-actions{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:5px;z-index:48;padding:5px;border:1px solid #263b50;border-radius:16px;background:rgba(8,18,30,.95);backdrop-filter:blur(12px)}
 .play-actions button{border:0;background:transparent;color:#dbe9ef;font:500 13px system-ui;padding:9px 12px;border-radius:10px;white-space:nowrap;cursor:pointer}

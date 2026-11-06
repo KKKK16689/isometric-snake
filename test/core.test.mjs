@@ -61,6 +61,19 @@ const ahead = (p, d) => { const q = d || p.dir; return { x: p.body[0].x + q[0], 
 const eq = (a, x, y) => a && a[0] === x && a[1] === y;   // 跨 vm 边界不用 deepStrictEqual（原型不同域）
 const NAMES = ['up', 'down', 'left', 'right'];
 
+test('暂停和重开立刻清除冲刺，并发出停止音效事件', () => {
+  for (const action of ['pause', 'restart']) {
+    const sb = load(); const {api,S,bus} = sb.Snake;
+    api.reset(); api.start(); api.setHold(0,true); stepOnce(sb);
+    assert.equal(S.pl[0].sprint,true);
+    let stopped = 0; bus.on('sprintOff', () => stopped++);
+    if (action === 'pause') api.togglePause(); else api.restart();
+    assert.equal(S.pl[0].hold,false,action);
+    assert.equal(S.pl[0].sprint,false,action);
+    assert.equal(stopped,1,action);
+  }
+});
+
 test('转向队列：最多存 2 个待执行转向，180° 掉头被拒绝', () => {
   const sb = load(); const { Snake } = sb;
   Snake.api.setMode('normal'); Snake.api.start();
@@ -712,6 +725,36 @@ function routeDirection(S, goal) {
   throw new Error('航标不可达：' + JSON.stringify(goal));
 }
 const SnakeDirs = { up: [0,-1], right: [1,0], down: [0,1], left: [-1,0] };
+
+test('港口六段：全程按住冲刺可通关，通关释放冲刺；更慢重试保留最佳用时', () => {
+  const sb = load('',false,true), {api,S,bus} = sb.Snake;
+  api.startMission(); api.start(); api.setHold(0,true);
+  let stops=0; bus.on('sprintOff',()=>stops++);
+  const finish = () => {
+    let moves=0;
+    while(S.state==='playing' && moves++<350) {
+      api.press(0,routeDirection(S,S.mission.goals[S.missionIndex])); moveOnce(sb,S.pl[0]);
+      assert.ok(S.pl[0].energy>=0 && S.pl[0].energy<=100);
+    }
+    assert.equal(S.missionWon,true); assert.equal(S.pl[0].lives,3);
+    assert.equal(S.missionIndex,6); assert.equal(S.pl[0].hold,false); assert.equal(S.pl[0].sprint,false);
+  };
+  finish(); assert.ok(stops>0);
+  const best=JSON.parse(sb.store.get('iso-snake-progress-v1'))[S.mission.id].bestMs;
+  api.restart(); api.start(); S.elapsed=best+1000; finish();
+  assert.equal(JSON.parse(sb.store.get('iso-snake-progress-v1'))[S.mission.id].bestMs,best);
+});
+
+test('港口航线：掉命保留航标进度、清除冲刺；重来重置进度与生命', () => {
+  const sb=load('',false,true), {api,S}=sb.Snake;
+  api.startMission(); api.start();
+  while(S.missionIndex===0) { api.press(0,routeDirection(S,S.mission.goals[0])); moveOnce(sb,S.pl[0]); }
+  api.setHold(0,true);
+  for(let i=0;i<80 && S.state==='playing';i++) stepOnce(sb);
+  assert.equal(S.state,'paused'); assert.equal(S.pl[0].lives,2); assert.equal(S.missionIndex,1);
+  assert.equal(S.pl[0].hold,false); assert.equal(S.pl[0].sprint,false);
+  api.restart(); assert.equal(S.pl[0].lives,3); assert.equal(S.missionIndex,0); assert.equal(S.elapsed,0);
+});
 test('港口航线：实际转向完成桥下、桥上、跨水、高台六目标，保存通关并可重试', () => {
   const sb = load('', false, true), { api, S } = sb.Snake;
   api.startMission(); api.start();
