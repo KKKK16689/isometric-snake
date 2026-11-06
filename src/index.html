@@ -38,6 +38,9 @@
 <section id="mission-hud" aria-label="航线目标" hidden><b id="mission-title"></b><span id="mission-tip"></span><small id="mission-time"></small></section>
 <div id="experience" class="experience" hidden></div>
 <h1>等距贪吃蛇</h1>
+<section id="preferences" role="dialog" aria-modal="true" aria-labelledby="preferences-title" hidden>
+<header class="preferences-head"><h2 id="preferences-title">游戏设置</h2><button id="close-settings">返回对局</button></header>
+<p class="preferences-label">地图与玩法 · 选图会重开当前对局</p>
 <div class="mode">
 <button data-m="easy" class="on">简单</button>
 <button data-m="normal">普通</button>
@@ -51,7 +54,7 @@
 <button id="daily" title="每日挑战：全球同一张棋盘">每日挑战</button>
 <button id="ghost" title="幽灵回放：关">幽灵</button>
         <button id="terrain" title="3D 地形：关">3D</button>
-          <select id="lv" title="3D 关卡"></select>
+          <select id="lv" aria-label="地图" title="地图"></select>
 <button id="copy" title="复制本局成绩">复制成绩</button>
 <select id="spr" aria-label="冲刺音效" title="冲刺音效">
 <option value="b">喷气</option>
@@ -62,7 +65,11 @@
 <option value="i">电弧</option>
 </select>
 </div>
+<p class="preferences-label">主题</p>
 <div class="th"></div>
+<div class="skin-settings" data-p="0"><p class="preferences-label">蛇的颜色 · P1</p><div class="sw" data-p="0"></div></div>
+<div class="skin-settings" data-p="1"><p class="preferences-label">蛇的颜色 · P2</p><div class="sw" data-p="1"></div></div>
+</section>
 <div class="hud"><span id="hl"></span><span id="hr"></span></div>
       <canvas id="mm" width="96" height="96" aria-hidden="true"></canvas>
 <div class="stage">
@@ -79,8 +86,6 @@
 <button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↗</button><span></span>
 <button data-s="left" aria-label="左">↖</button><button data-s="down" aria-label="下">↙</button><button data-s="right" aria-label="右">↘</button>
 </div>
-<div class="sw" data-p="0"></div>
-<div class="sw" data-p="1"></div>
 </div>
 <div class="rotate">请把手机横过来，开始对战</div>
 <div class="hint" id="hint">像 App 一样全屏打开：<br>iPhone：Safari 点分享，再点“添加到主屏幕”<br>安卓：浏览器菜单里选“添加到主屏幕”或“安装应用”<br><span>点这里关闭</span></div>

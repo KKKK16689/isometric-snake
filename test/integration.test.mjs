@@ -915,7 +915,7 @@ test('3D 地形：结构色 = biome 基色 × 主题强调色，换主题就变�
 test('地形选择器：反复开关不重复添加地图或绑定事件，换图重置对局', () => {
   const H = makeDom(); boot(H);
   const n = H.byId.lv.children.length;
-  assert.equal(n, H.sb.Snake.LEVELS.length - 1);
+  assert.equal(n, H.sb.Snake.LEVELS.length, '八张可玩地形 + 经典棋盘；测试图不出现在选择器');
   for (let i=0;i<6;i++) H.clickEl(H.byId.terrain);
   assert.equal(H.byId.lv.children.length,n);
   assert.equal(H.byId.lv._h.change.length,1);
@@ -923,6 +923,10 @@ test('地形选择器：反复开关不重复添加地图或绑定事件，换�
   H.byId.lv.value='harbor-route'; H.fireEl(H.byId.lv,'change',{});
   assert.equal(H.S.levelId,'harbor-route'); assert.equal(H.S.T.w,18);
   assert.equal(H.S.state,'ready'); assert.equal(H.S.pl[0].body[0].x,3);
+  H.byId.lv.value=''; H.fireEl(H.byId.lv,'change',{});
+  assert.equal(H.S.terrain,false); assert.equal(H.S.T,null);
+  H.byId.lv.value='ridges-40'; H.fireEl(H.byId.lv,'change',{});
+  assert.equal(H.S.terrain,true); assert.equal(H.S.T.w,40);
 });
 test('键盘：选择框中按方向键与系统重复按键不会误操纵蛇；失焦自动暂停', () => {
   const H=makeDom(); boot(H);
