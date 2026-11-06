@@ -23,11 +23,20 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<title>等距贪吃蛇</title>
+<meta name="author" content="孔垂瑞">
+<meta name="application-version" content="3.0.0">
+<title>等距贪吃蛇 V3.0.0</title>
 <link rel="stylesheet" href="css/base.css">
 </head>
 <body>
 <main>
+<nav class="play-actions" aria-label="游戏操作">
+<button id="menu">⌂ <span>主页</span></button><button id="pause">Ⅱ <span>暂停</span></button>
+<button id="restart">↻ <span>重来</span></button><button id="help">? <span>练习</span></button>
+<button id="settings" aria-expanded="false">⚙ <span>设置</span></button>
+</nav>
+<section id="mission-hud" aria-label="航线目标" hidden><b id="mission-title"></b><span id="mission-tip"></span><small id="mission-time"></small></section>
+<div id="experience" class="experience" hidden></div>
 <h1>等距贪吃蛇</h1>
 <div class="mode">
 <button data-m="easy" class="on">简单</button>
@@ -58,8 +67,8 @@
       <canvas id="mm" width="96" height="96" aria-hidden="true"></canvas>
 <div class="stage">
 <div class="pad" data-p="0">
-<button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↑</button><span></span>
-<button data-s="left" aria-label="左">←</button><button data-s="down" aria-label="下">↓</button><button data-s="right" aria-label="右">→</button>
+<button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↗</button><span></span>
+<button data-s="left" aria-label="左">↖</button><button data-s="down" aria-label="下">↙</button><button data-s="right" aria-label="右">↘</button>
 </div>
 <canvas id="c" role="img" aria-label="等距视角的贪吃蛇棋盘"></canvas>
 <div class="eb" data-p="0"><i></i></div>
@@ -67,8 +76,8 @@
 <div class="cmp" data-p="0"><b class="fd"><u></u></b><i class="hd"></i></div>
 <div class="cmp" data-p="1"><b class="fd"><u></u></b><i class="hd"></i></div>
 <div class="pad" data-p="1">
-<button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↑</button><span></span>
-<button data-s="left" aria-label="左">←</button><button data-s="down" aria-label="下">↓</button><button data-s="right" aria-label="右">→</button>
+<button class="sp" aria-label="冲刺">冲</button><button data-s="up" aria-label="上">↗</button><span></span>
+<button data-s="left" aria-label="左">↖</button><button data-s="down" aria-label="下">↙</button><button data-s="right" aria-label="右">↘</button>
 </div>
 <div class="sw" data-p="0"></div>
 <div class="sw" data-p="1"></div>
@@ -77,7 +86,7 @@
 <div class="hint" id="hint">像 App 一样全屏打开：<br>iPhone：Safari 点分享，再点“添加到主屏幕”<br>安卓：浏览器菜单里选“添加到主屏幕”或“安装应用”<br><span>点这里关闭</span></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="live" class="sr-only" aria-live="polite"></div>
-<p class="tip">方向键对应屏幕方向，空格暂停。按住 Shift、E 或 Enter 冲刺，手机按住「冲」键冲刺，也可在棋盘上滑动转向。罗盘里箭头是蛇的朝向，橙点指向最近的食物。简单模式有 3 条命。</p>
+<p class="tip">↑/W 对应右上，→/D 对应右下，↓/S 对应左下，←/A 对应左上；空格暂停。按住 Shift、E 或 Enter 冲刺，手机按住「冲」键冲刺，也可在棋盘上滑动转向。罗盘里箭头是蛇的朝向，橙点指向最近的食物。简单模式有 3 条命。</p>
 </main>
 <script src="js/core.js"></script>
 <script src="js/levels.js"></script>
@@ -89,6 +98,7 @@
 <script src="js/render.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/input.js"></script>
+<script src="js/experience.js"></script>
 <script>
 (function () {
   'use strict';
@@ -98,6 +108,7 @@
   Snake.UI.init();
   Snake.Render.boot();
   Snake.api.reset();
+  if (Snake.Experience) Snake.Experience.init();
   if (new URLSearchParams(location.search).get('autostart') === '1') Snake.api.start(); // ?autostart=1：自动开赛（截图/演示用）
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {   // 离线缓存：仅 http(s) 注册，file:// 双击打开静默跳过
     addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
